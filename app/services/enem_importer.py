@@ -5,7 +5,8 @@ URLs diretas conhecidas; para anos anteriores, o sistema aponta o catálogo
 oficial do repositório RIEP para evitar adivinhar URLs.
 """
 from __future__ import annotations
-import hashlib, json, re, html, time
+import hashlib, json, re, html, time, ssl
+import certifi
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -17,6 +18,12 @@ ALLOWED_PDF_HOSTS = {"download.inep.gov.br", "www.gov.br", "riep.inep.gov.br"}
 MAX_PDF_BYTES = 80 * 1024 * 1024
 
 COLORS = {1:"Azul",2:"Amarelo",3:"Branco",4:"Rosa",5:"Cinza"}
+
+
+def _urlopen_verified(request, timeout=30):
+    """Open HTTPS with certificate verification against the maintained certifi CA bundle."""
+    context = ssl.create_default_context(cafile=certifi.where())
+    return urlopen(request, timeout=timeout, context=context)
 
 def candidate_2025():
     items = []
@@ -40,7 +47,7 @@ def candidate_2025():
 def check_url(url, timeout=8):
     try:
         req=Request(url, method="HEAD", headers={"User-Agent":"ENEM-Predict/1.0"})
-        with urlopen(req, timeout=timeout) as r:
+        with _urlopen_verified(req, timeout=timeout) as r:
             return 200 <= r.status < 400
     except Exception:
         # Some servers reject HEAD; a tiny ranged GET is the fallback.
@@ -56,7 +63,7 @@ def discover_year_page(year:int, application:str="regular"):
     page=f"https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos/{year}"
     try:
         req=Request(page,headers={"User-Agent":"ENEM-Predict/1.0"})
-        with urlopen(req,timeout=15) as r: raw=r.read().decode("utf-8","ignore")
+        with _urlopen_verified(req,timeout=15) as r: raw=r.read().decode("utf-8","ignore")
     except Exception:
         return []
     out=[]
@@ -123,7 +130,7 @@ def _open_url_with_retries(request, timeout=90, attempts=3):
     last_error = None
     for attempt in range(attempts):
         try:
-            return urlopen(request, timeout=timeout)
+            return _urlopen_verified(request, timeout=timeout)
         except HTTPError:
             raise
         except (URLError, TimeoutError, ConnectionError) as exc:
