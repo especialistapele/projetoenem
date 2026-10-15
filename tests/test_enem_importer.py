@@ -51,7 +51,7 @@ class EnemImporterTests(unittest.TestCase):
         self.assertIn("PDF", reason)
 
     def test_answer_key_preserves_official_annulled_questions(self):
-        answers = parse_answer_key("91 A\\n92 Anulado\\n93 C")
+        answers = parse_answer_key("91 A\n92 Anulado\n93 C")
         self.assertEqual(answers[91], "A")
         self.assertEqual(answers[92], "ANULADO")
         self.assertEqual(answers[93], "C")
