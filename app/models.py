@@ -373,6 +373,7 @@ class Simulation(Base):
 
 class SimulationQuestion(Base):
     __tablename__ = "simulation_questions"
+    __table_args__ = (UniqueConstraint("simulation_id", "question_id"), UniqueConstraint("simulation_id", "position"))
     id = Column(BigInteger, primary_key=True)
     simulation_id = Column(BigInteger, ForeignKey("simulations.id", ondelete="CASCADE"), nullable=False)
     question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
