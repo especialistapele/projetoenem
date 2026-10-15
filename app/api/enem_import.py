@@ -177,7 +177,8 @@ def prepare_dataset():
                 a = dict(alt)
                 a["is_correct"] = bool(answer and a.get("letter", "").upper() == str(answer).upper())
                 alts.append(a)
-            if answer: group["matched_answers"] += 1
+            if answer and sum(1 for alt in alts if alt["is_correct"]) == 1:
+                group["matched_answers"] += 1
             questions.append({
                 "exam": {"year": year, "edition": "regular", "color": str(color_code or "azul").lower(), "day": day},
                 "number": number,
@@ -188,6 +189,10 @@ def prepare_dataset():
                 "topics": [],
                 "classification": cls,
             })
+        if group["matched_answers"] != len(items) or any(
+            len(q.get("alternatives", []) or []) != 5 for q in items
+        ):
+            group["status"] = "review"
         groups.append(group)
 
     payload = {"exams": [{"year": g["year"], "edition": "regular", "color": str(g.get("color") or "azul").lower(), "day": g["day"]}
