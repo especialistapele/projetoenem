@@ -7,6 +7,7 @@ from app.services.enem_importer import download_pdf, validate_pdf_bytes
 from scripts.import_dataset import normalize_area, validate_dataset
 from scripts.parse_pdf import infer_metadata, parse_pdf
 from app.services.enem_importer import candidate_2025
+from app.services.classifier import official_area_for_question_number
 
 
 class FakeResponse:
@@ -42,6 +43,17 @@ class EnemImporterTests(unittest.TestCase):
         valid, reason = validate_pdf_bytes(b"%PDF-1.7\nsmall")
         self.assertFalse(valid)
         self.assertIn("pequeno", reason)
+
+    def test_official_area_mapping_uses_enem_question_ranges(self):
+        self.assertEqual(official_area_for_question_number(1), "Linguagens")
+        self.assertEqual(official_area_for_question_number(45), "Linguagens")
+        self.assertEqual(official_area_for_question_number(46), "Ciências Humanas")
+        self.assertEqual(official_area_for_question_number(90), "Ciências Humanas")
+        self.assertEqual(official_area_for_question_number(91), "Ciências da Natureza")
+        self.assertEqual(official_area_for_question_number(135), "Ciências da Natureza")
+        self.assertEqual(official_area_for_question_number(136), "Matemática")
+        self.assertEqual(official_area_for_question_number(180), "Matemática")
+        self.assertIsNone(official_area_for_question_number(181))
 
     def test_2025_candidate_urls_use_official_day_and_booklet_codes(self):
         items = candidate_2025()
