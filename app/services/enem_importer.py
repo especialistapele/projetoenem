@@ -5,7 +5,7 @@ URLs diretas conhecidas; para anos anteriores, o sistema aponta o catálogo
 oficial do repositório RIEP para evitar adivinhar URLs.
 """
 from __future__ import annotations
-import hashlib, json, re, html, time, ssl
+import hashlib, json, re, html, time, ssl, os
 import certifi
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -22,7 +22,8 @@ COLORS = {1:"Azul",2:"Amarelo",3:"Branco",4:"Rosa",5:"Cinza"}
 
 def _urlopen_verified(request, timeout=30):
     """Open HTTPS with certificate verification against the maintained certifi CA bundle."""
-    context = ssl.create_default_context(cafile=certifi.where())
+    ca_bundle = os.environ.get("ENEM_CA_BUNDLE") or certifi.where()
+    context = ssl.create_default_context(cafile=ca_bundle)
     return urlopen(request, timeout=timeout, context=context)
 
 def candidate_2025():
