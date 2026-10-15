@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
-from app.models import Exam, Question, Alternative, QuestionAttempt, StudentTopicPerformance, Topic, QuestionTopic, KnowledgeArea, Program, Simulation, SimulationAttempt, EssaySubmission, EssayReview, Subject
+from app.models import Exam, Question, Alternative, QuestionAttempt, StudentTopicPerformance, Topic, QuestionTopic, KnowledgeArea, Program, TopicYearFrequency, Simulation, SimulationQuestion, SimulationAttempt, EssaySubmission, EssayReview, Subject
 from app.supabase_auth import get_current_supabase_user, require_admin
 from app.services.tri_estimator import estimate
 
@@ -15,7 +15,7 @@ def uid(user): return user.get("id")
 
 def require_teacher(authorization: Optional[str] = Header(default=None)):
     user = get_current_supabase_user(authorization)
-    role = ((user.get("app_metadata") or {}).get("role") or (user.get("user_metadata") or {}).get("role"))
+    role = (user.get("app_metadata") or {}).get("role")
     if role not in ("teacher", "admin"):
         raise HTTPException(403, "Acesso restrito ao professor.")
     return user
@@ -23,7 +23,7 @@ def require_teacher(authorization: Optional[str] = Header(default=None)):
 class AttemptIn(BaseModel):
     question_id:int
     selected_letter:str=Field(min_length=1,max_length=1)
-    seconds_spent:Optional[int]=None
+    seconds_spent:Optional[int]=Field(default=None,ge=0,le=7200)
 
 class EssayIn(BaseModel):
     title:str=Field(min_length=1,max_length=200)
@@ -49,6 +49,7 @@ def answer_question(payload:AttemptIn, user=Depends(get_current_supabase_user), 
     q=db.query(Question).options(joinedload(Question.alternatives)).filter(Question.id==payload.question_id).first()
     if not q: raise HTTPException(404,"Questão não encontrada")
     letter=payload.selected_letter.upper()
+    if not any(a.letter.upper()==letter for a in q.alternatives): raise HTTPException(422,"Alternativa inválida para esta questão")
     correct=next((a.is_correct for a in q.alternatives if a.letter.upper()==letter),False)
     attempt=QuestionAttempt(user_id=uid(user),question_id=q.id,selected_letter=letter,is_correct=bool(correct),seconds_spent=payload.seconds_spent)
     db.add(attempt)
@@ -82,24 +83,26 @@ def seed_simulations(user=Depends(require_admin), db:Session=Depends(get_db)):
 def simulation_detail(simulation_id:int, db:Session=Depends(get_db)):
     s=db.query(Simulation).filter(Simulation.id==simulation_id).first()
     if not s: raise HTTPException(404,"Simulado não encontrado")
-    qs=db.query(Question).join(SimulationAttempt, SimulationAttempt.question_id==Question.id, isouter=True).filter(SimulationAttempt.simulation_id==simulation_id).all()
-    return {"id":s.id,"title":s.title,"question_count":s.question_count,"questions":[q.id for q in qs]}
+    qs=(db.query(SimulationQuestion).filter_by(simulation_id=simulation_id).order_by(SimulationQuestion.position).all())
+    return {"id":s.id,"title":s.title,"question_count":s.question_count,"generated_questions":len(qs),"questions":[q.question_id for q in qs]}
 
 @router.post("/simulations/{simulation_id}/generate")
 def generate_simulation(simulation_id:int,user=Depends(require_admin),db:Session=Depends(get_db)):
     s=db.query(Simulation).filter_by(id=simulation_id).first()
     if not s: raise HTTPException(404,"Simulado não encontrado")
-    if db.query(SimulationAttempt).filter_by(simulation_id=simulation_id).count(): return {"status":"already_generated"}
+    if db.query(SimulationQuestion).filter_by(simulation_id=simulation_id).count(): return {"status":"already_generated"}
     # Balanced ENEM-like selection by four knowledge areas when enough classified questions exist.
-    areas=db.query(KnowledgeArea).order_by(KnowledgeArea.id).all()
+    areas=db.query(KnowledgeArea).filter(KnowledgeArea.code.in_(["LC","CH","CN","MT"])).order_by(KnowledgeArea.id).all()
+    if len(areas) < 4:
+        areas=db.query(KnowledgeArea).order_by(KnowledgeArea.id).limit(4).all()
     selected=[]
-    for area in areas[:4]:
-        ids=[r[0] for r in db.query(Question.id).join(Subject, Question.subject_id==Subject.id).filter(Subject.knowledge_area_id==area.id).limit(45).all()]
+    for area in areas:
+        ids=[r[0] for r in db.query(Question.id).join(Subject, Question.subject_id==Subject.id).join(Alternative, Alternative.question_id==Question.id).filter(Subject.knowledge_area_id==area.id).group_by(Question.id).having(func.count(Alternative.id)>=2, func.count(Alternative.id).filter(Alternative.is_correct.is_(True))==1).order_by(Question.id).limit(45).all()]
         selected.extend(ids)
-    selected=selected[:180]
-    if len(selected)<180:
+    selected=list(dict.fromkeys(selected))[:min(180, s.question_count)]
+    if len(selected)<s.question_count:
         raise HTTPException(409,f"Banco insuficiente para um simulado completo: {len(selected)}/180 questões classificadas disponíveis.")
-    for idx,qid in enumerate(selected,1): db.add(SimulationAttempt(simulation_id=simulation_id,question_id=qid,position=idx))
+    for idx,qid in enumerate(selected,1): db.add(SimulationQuestion(simulation_id=simulation_id,question_id=qid,position=idx))
     s.status="ready"; db.commit(); return {"status":"ready","questions":len(selected)}
 
 @router.get("/essays")
@@ -118,7 +121,7 @@ def submit_essay(payload:EssayIn,user=Depends(get_current_supabase_user),db:Sess
 @router.get("/teacher/essays")
 def teacher_essays(status:Optional[str]=None,user=Depends(require_teacher),db:Session=Depends(get_db)):
     q=db.query(EssaySubmission).order_by(EssaySubmission.submitted_at.asc())
-    role=((user.get('app_metadata') or {}).get('role') or (user.get('user_metadata') or {}).get('role'))
+    role=(user.get('app_metadata') or {}).get('role')
     if role != 'admin':
         q=q.filter(text("essay_submissions.user_id IN (SELECT student_id FROM public.teacher_students WHERE teacher_id = :tid AND active = true)")).params(tid=uid(user))
     if status:q=q.filter(EssaySubmission.status==status)
@@ -128,12 +131,21 @@ def teacher_essays(status:Optional[str]=None,user=Depends(require_teacher),db:Se
 def teacher_essay(essay_id:int,user=Depends(require_teacher),db:Session=Depends(get_db)):
     e=db.query(EssaySubmission).filter_by(id=essay_id).first()
     if not e: raise HTTPException(404,"Redação não encontrada")
-    return {"id":e.id,"user_id":e.user_id,"title":e.title,"content_text":e.content_text,"submitted_at":e.submitted_at.isoformat(),"status":e.status,"review":e.review.__dict__ if e.review else None}
+    role=(user.get('app_metadata') or {}).get('role')
+    if role != 'admin':
+        assigned=db.execute(text("SELECT 1 FROM public.teacher_students WHERE teacher_id=:tid AND student_id=:sid AND active=true"),{'tid':uid(user),'sid':e.user_id}).first()
+        if not assigned: raise HTTPException(403,"Você não tem vínculo ativo com este estudante.")
+    review={k:v for k,v in e.review.__dict__.items() if not k.startswith('_')} if e.review else None
+    return {"id":e.id,"user_id":e.user_id,"title":e.title,"content_text":e.content_text,"submitted_at":e.submitted_at.isoformat(),"status":e.status,"review":review}
 
 @router.post("/teacher/essays/{essay_id}/review")
 def review_essay(essay_id:int,payload:ReviewIn,user=Depends(require_teacher),db:Session=Depends(get_db)):
     e=db.query(EssaySubmission).filter_by(id=essay_id).first()
     if not e: raise HTTPException(404,"Redação não encontrada")
+    role=(user.get('app_metadata') or {}).get('role')
+    if role != 'admin':
+        assigned=db.execute(text("SELECT 1 FROM public.teacher_students WHERE teacher_id=:tid AND student_id=:sid AND active=true"),{'tid':uid(user),'sid':e.user_id}).first()
+        if not assigned: raise HTTPException(403,"Você não tem vínculo ativo com este estudante.")
     r=e.review or EssayReview(essay_id=e.id)
     r.reviewer_id=uid(user);r.score=payload.score;r.competency_1=payload.competency_1;r.competency_2=payload.competency_2;r.competency_3=payload.competency_3;r.competency_4=payload.competency_4;r.competency_5=payload.competency_5;r.strengths=payload.strengths;r.improvements=payload.improvements;r.feedback=payload.feedback;r.reviewed_at=datetime.now(timezone.utc)
     if not e.review: db.add(r)
@@ -141,24 +153,31 @@ def review_essay(essay_id:int,payload:ReviewIn,user=Depends(require_teacher),db:
 
 @router.get("/simulations/{simulation_id}/questions")
 def simulation_questions(simulation_id:int, user=Depends(get_current_supabase_user), db:Session=Depends(get_db)):
-    rows=(db.query(SimulationAttempt, Question)
-          .join(Question, Question.id==SimulationAttempt.question_id)
-          .filter(SimulationAttempt.simulation_id==simulation_id)
-          .order_by(SimulationAttempt.position).all())
+    rows=(db.query(SimulationQuestion, Question)
+          .join(Question, Question.id==SimulationQuestion.question_id)
+          .filter(SimulationQuestion.simulation_id==simulation_id)
+          .order_by(SimulationQuestion.position).all())
     return [{"position":a.position,"question_id":q.id,"number":q.number,"statement_text":q.statement_text,"alternatives":[{"letter":x.letter,"text":x.text} for x in q.alternatives]} for a,q in rows]
 
 class SimulationAnswerIn(BaseModel):
     question_id:int
     selected_letter:str=Field(min_length=1,max_length=1)
-    seconds_spent:Optional[int]=None
+    seconds_spent:Optional[int]=Field(default=None,ge=0,le=7200)
 
 @router.post("/simulations/{simulation_id}/answer")
 def simulation_answer(simulation_id:int,payload:SimulationAnswerIn,user=Depends(get_current_supabase_user),db:Session=Depends(get_db)):
-    a=db.query(SimulationAttempt).filter_by(simulation_id=simulation_id,question_id=payload.question_id).first()
-    if not a: raise HTTPException(404,"Questão não pertence a este simulado")
+    membership=db.query(SimulationQuestion).filter_by(simulation_id=simulation_id,question_id=payload.question_id).first()
+    if not membership: raise HTTPException(404,"Questão não pertence a este simulado")
     q=db.query(Question).options(joinedload(Question.alternatives)).filter_by(id=payload.question_id).first()
-    letter=payload.selected_letter.upper(); correct=next((x.is_correct for x in q.alternatives if x.letter.upper()==letter),False)
-    a.user_id=uid(user);a.selected_letter=letter;a.is_correct=bool(correct);a.seconds_spent=payload.seconds_spent;a.answered_at=datetime.now(timezone.utc)
+    if not q: raise HTTPException(404,"Questão não encontrada")
+    letter=payload.selected_letter.upper()
+    if not any(x.letter.upper()==letter for x in q.alternatives): raise HTTPException(422,"Alternativa inválida para esta questão")
+    correct=next((x.is_correct for x in q.alternatives if x.letter.upper()==letter),False)
+    a=db.query(SimulationAttempt).filter_by(simulation_id=simulation_id,question_id=payload.question_id,user_id=uid(user)).first()
+    if not a:
+        a=SimulationAttempt(simulation_id=simulation_id,question_id=payload.question_id,position=membership.position,user_id=uid(user))
+        db.add(a)
+    a.selected_letter=letter;a.is_correct=bool(correct);a.seconds_spent=payload.seconds_spent;a.answered_at=datetime.now(timezone.utc)
     db.commit();return {"is_correct":bool(correct)}
 
 @router.get("/simulations/{simulation_id}/result")
@@ -202,7 +221,7 @@ def dashboard_history(user=Depends(get_current_supabase_user),db:Session=Depends
     sim_out=[]
     for s in sims:
         rows=db.query(SimulationAttempt).filter_by(simulation_id=s.id,user_id=uid(user)).all(); total=len(rows); correct=sum(bool(x.is_correct) for x in rows)
-        sim_out.append({"sequence":s.sequence,"title":s.title,"answered":total,"correct":correct,"accuracy":correct/total if total else 0,"estimated_score":round(300+(correct/total)*400,1) if total else None})
+        sim_out.append({"sequence":s.sequence,"title":s.title,"answered":total,"correct":correct,"accuracy":correct/total if total else 0,"estimated_score":round(300+(correct/total)*400,1) if total else None,"score_note":"Estimativa linear simplificada para acompanhamento; não representa a nota oficial TRI do ENEM."})
     essays=db.query(EssaySubmission).options(joinedload(EssaySubmission.review)).filter_by(user_id=uid(user)).order_by(EssaySubmission.submitted_at).all()
     essay_out=[{"title":e.title,"submitted_at":e.submitted_at.isoformat(),"score":float(e.review.score) if e.review else None,"status":e.status} for e in essays]
     return {"simulations":sim_out,"essays":essay_out}
@@ -228,7 +247,12 @@ def start_proficiency_v2(payload: ProficiencyStartInV2, user=Depends(get_current
         return {"assessment_id":active.id,"status":"in_progress","question_count":len(items),"items":[{"position":i.position,"question_id":i.question_id} for i in items]}
     a=ProficiencyAssessment(user_id=uidv,title='Teste de proficiência inicial',status='in_progress',question_count=0)
     db.add(a);db.flush()
-    qids=[r[0] for r in db.query(Question.id).order_by(func.random()).limit(payload.question_count).all()]
+    qids=[r[0] for r in db.query(Question.id).join(Alternative, Alternative.question_id==Question.id).group_by(Question.id)
+          .having(func.count(Alternative.id)>=2, func.count(Alternative.id).filter(Alternative.is_correct.is_(True))==1)
+          .order_by(func.random()).limit(payload.question_count).all()]
+    if not qids:
+        db.rollback()
+        raise HTTPException(409,'Não há questões com alternativas e gabarito válidos para iniciar o diagnóstico.')
     for pos,qid in enumerate(qids,1): db.add(ProficiencyAssessmentItem(assessment_id=a.id,question_id=qid,position=pos))
     a.question_count=len(qids);db.commit()
     return {"assessment_id":a.id,"status":a.status,"question_count":a.question_count,"items":[{"position":i.position,"question_id":i.question_id} for i in db.query(ProficiencyAssessmentItem).filter_by(assessment_id=a.id).order_by(ProficiencyAssessmentItem.position).all()]}
@@ -252,7 +276,9 @@ def proficiency_answer_v2(assessment_id:int,payload:ProficiencyAnswerInV2,user=D
     item=db.query(ProficiencyAssessmentItem).filter_by(assessment_id=assessment_id,question_id=payload.question_id).first()
     if not item: raise HTTPException(404,'Questão não pertence ao teste.')
     q=db.query(Question).options(joinedload(Question.alternatives)).filter_by(id=payload.question_id).first()
-    letter=payload.selected_letter.upper(); correct=any(x.letter.upper()==letter and x.is_correct for x in q.alternatives)
+    letter=payload.selected_letter.upper()
+    if not any(x.letter.upper()==letter for x in q.alternatives): raise HTTPException(422,'Alternativa inválida para esta questão.')
+    correct=any(x.letter.upper()==letter and x.is_correct for x in q.alternatives)
     item.selected_letter=letter;item.is_correct=bool(correct);item.answered_at=datetime.now(timezone.utc);db.commit()
     answered=db.query(ProficiencyAssessmentItem).filter_by(assessment_id=assessment_id).filter(ProficiencyAssessmentItem.selected_letter.isnot(None)).count()
     return {"is_correct":bool(correct),"answered":answered,"total":a.question_count}

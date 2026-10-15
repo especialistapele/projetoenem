@@ -1,9 +1,13 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.scoring import hybrid_score
 from app.services.predictor import build_prediction, softmax
+from app.models import ProgramWeight, Topic, TopicEdge, TopicYearFrequency
+from app.supabase_auth import require_admin
 
 router = APIRouter(prefix="/scoring", tags=["scoring"])
 
@@ -69,6 +73,7 @@ def generate_predictions(
     trend_weight: float = Query(0.15, ge=0, le=1),
     recency_decay: float = Query(0.35, gt=0, le=2),
     db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
 ):
     if recency_weight + trend_weight > 1:
         raise HTTPException(status_code=400, detail="A soma dos pesos de recência e tendência deve ser <= 1")
@@ -96,13 +101,20 @@ def generate_predictions(
         explanations=[("frequency",factors["frequency"],"Frequência histórica do tema."),("recency",factors["recency"],"Peso das ocorrências mais recentes."),("trend",factors["trend"],"Variação entre períodos históricos."),("graph",factors["graph_boost"],"Bônus pelas conexões do tema no grafo."),("area_weight",factors["area_weight"],"Peso da área para o curso selecionado.")]
         db.add_all([TopicPredictionExplanation(prediction_id=r.id,factor=f,contribution=c,explanation=e) for f,c,e in explanations])
     db.commit()
-    return get_predictions(program_id,db)
+    return get_predictions(program_id, limit=50, db=db)
 
 @router.get("/predictions")
 def get_predictions(program_id:int, limit:int=Query(50,ge=1,le=500), db:Session=Depends(get_db)):
     from app.models import TopicPredictionResult
     rows=db.query(TopicPredictionResult).filter(TopicPredictionResult.program_id==program_id).order_by(TopicPredictionResult.rank).limit(limit).all()
-    return [{"prediction_id":r.id,"topic_id":r.topic_id,"topic_name":r.topic.name if r.topic else None,"score":float(r.score),"probability":float(r.probability),"rank":r.rank,"model_version":r.model_version,"factors":r.factors} for r in rows]
+    output=[]
+    for r in rows:
+        try:
+            factors = r.factors if isinstance(r.factors, dict) else json.loads(r.factors or "{}")
+        except (TypeError, ValueError):
+            factors = {}
+        output.append({"prediction_id":r.id,"topic_id":r.topic_id,"topic_name":r.topic.name if r.topic else None,"score":float(r.score),"probability":float(r.probability),"rank":r.rank,"model_version":r.model_version,"factors":factors})
+    return output
 
 
 @router.get('/study-plan')

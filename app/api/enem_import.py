@@ -24,7 +24,11 @@ def storage_quota():
     return dict(row) if row else {"used_bytes": 0, "warning_bytes": 419430400, "limit_bytes": 471859200, "remaining_bytes": 471859200, "usage_percent": 0, "status": "ok"}
 
 class DiscoveryRequest(BaseModel):
-    year_start:int=Field(2025,ge=1998,le=2025); year_end:int=Field(2025,ge=1998,le=2025); application:str="regular"
+    year_start:int=Field(2025,ge=1998,le=2026); year_end:int=Field(2026,ge=1998,le=2026); application:str="regular"
+
+class ImportRequest(BaseModel):
+    dataset_path: str = "data/enem/prepared_dataset.json"
+    dry_run: bool = True
 
 @router.post("/discover")
 def discover_files(payload:DiscoveryRequest):
@@ -126,13 +130,15 @@ def _metadata_from_path(path: Path, data: dict):
     day = data.get("day")
     color = data.get("color")
     for i, part in enumerate(parts):
-        if part.isdigit() and 1998 <= int(part) <= 2025:
+        if part.isdigit() and 1998 <= int(part) <= 2026:
             year = year or int(part)
         if part.startswith("dia_"):
             try: day = day or int(part.split("_", 1)[1])
             except ValueError: pass
         if part.lower() in {"azul", "amarelo", "branco", "rosa", "cinza"}:
             color = color or part.capitalize()
+    if not color and data.get("caderno") is not None:
+        color = {1: "Azul", 2: "Amarelo", 3: "Branco", 4: "Rosa", 5: "Cinza"}.get(int(data["caderno"]))
     return year, day, color
 
 
@@ -146,8 +152,7 @@ def prepare_dataset():
         try: data = _load_parsed(path)
         except Exception: continue
         year, day, color = _metadata_from_path(path, data)
-        cd = data.get("caderno")
-        key = (year, day, cd or (color or "").lower())
+        key = (year, day, (color or "").lower())
         typ = data.get("document_type")
         if data.get("special_version"):
             continue
@@ -159,16 +164,19 @@ def prepare_dataset():
     questions = []
     groups = []
     for key, (path, notebook) in sorted(notebooks.items(), key=lambda x: str(x[0])):
-        year, day, code = key
+        year, day, color_code = key
         answer_data = keys.get(key, (None, {}))[1]
         answers = answer_data.get("answers", {}) or {}
         items = notebook.get("questions", []) or []
-        group = {"year": year, "day": day, "caderno": code,
+        group = {"year": year, "day": day, "color": color_code,
                  "questions": len(items), "answers": len(answers),
-                 "matched_answers": 0, "status": "ready" if answers else "review"}
+                 "matched_answers": 0, "unclassified_questions": 0,
+                 "status": "ready" if answers else "review"}
         for q in items:
             text = q.get("statement_text", "")
             cls = classify_question(text)
+            if not cls.get("area") or not cls.get("subject"):
+                group["unclassified_questions"] += 1
             number = int(q.get("number"))
             answer = answers.get(str(number), answers.get(number))
             alts = []
@@ -176,9 +184,10 @@ def prepare_dataset():
                 a = dict(alt)
                 a["is_correct"] = bool(answer and a.get("letter", "").upper() == str(answer).upper())
                 alts.append(a)
-            if answer: group["matched_answers"] += 1
+            if answer and sum(1 for alt in alts if alt["is_correct"]) == 1:
+                group["matched_answers"] += 1
             questions.append({
-                "exam": {"year": year, "edition": "regular", "color": str(code or "azul").lower(), "day": day},
+                "exam": {"year": year, "edition": "regular", "color": str(color_code or "azul").lower(), "day": day},
                 "number": number,
                 "area": cls.get("area"),
                 "subject": cls.get("subject"),
@@ -187,31 +196,36 @@ def prepare_dataset():
                 "topics": [],
                 "classification": cls,
             })
+        if group["matched_answers"] != len(items) or group["unclassified_questions"] > 0 or any(
+            len(q.get("alternatives", []) or []) != 5 for q in items
+        ):
+            group["status"] = "review"
         groups.append(group)
 
-    payload = {"exams": [{"year": g["year"], "edition": "regular", "color": str(g.get("caderno") or "azul").lower(), "day": g["day"]}
+    payload = {"exams": [{"year": g["year"], "edition": "regular", "color": str(g.get("color") or "azul").lower(), "day": g["day"]}
                           for g in groups],
                "questions": questions,
                "groups": groups,
                "diagnostics": {"groups": len(groups), "questions": len(questions),
                                "questions_with_answer": sum(1 for q in questions if any(a.get("is_correct") for a in q["alternatives"])),
-                               "questions_without_answer": sum(1 for q in questions if not any(a.get("is_correct") for a in q["alternatives"]))}}
+                               "questions_without_answer": sum(1 for q in questions if not any(a.get("is_correct") for a in q["alternatives"])),
+                               "questions_unclassified": sum(1 for q in questions if not q.get("area") or not q.get("subject"))}}
     out = BASE_DIR / "prepared_dataset.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"status": "prepared", "path": str(out.relative_to(BASE_DIR.parent.parent)), **payload["diagnostics"], "groups": groups}
 
 
 @router.post("/import")
-def import_prepared(payload: dict):
+def import_prepared(payload: ImportRequest):
     """Importa o lote preparado; por padrão executa dry-run para segurança."""
-    rel = payload.get("dataset_path", "data/enem/prepared_dataset.json")
+    rel = payload.dataset_path
     path = (BASE_DIR.parent.parent / rel).resolve()
     if BASE_DIR.resolve() not in path.parents or not path.exists():
         raise HTTPException(400, "Dataset preparado não encontrado no staging.")
-    dry_run = bool(payload.get("dry_run", True))
+    dry_run = payload.dry_run
     try:
-        import_dataset_run(str(path), dry_run=dry_run)
-        return {"status": "dry_run" if dry_run else "imported", "dataset_path": rel}
+        summary = import_dataset_run(str(path), dry_run=dry_run)
+        return {"status": "dry_run" if dry_run else "imported", "dataset_path": rel, "summary": summary}
     except Exception as exc:
         raise HTTPException(422, f"Falha na importação: {exc}")
 
@@ -221,10 +235,12 @@ def cleanup_processed():
     import shutil
     removed = 0
     if BASE_DIR.exists():
-        for path in BASE_DIR.rglob("*"):
-            if path.is_file() and path.suffix.lower() == ".pdf":
-                try:
-                    path.unlink(); removed += 1
-                except OSError:
-                    pass
+        for path in BASE_DIR.rglob("*.pdf"):
+            # Só remove o PDF quando o parser já produziu o artefato correspondente.
+            if not path.with_suffix(".parsed.json").is_file():
+                continue
+            try:
+                path.unlink(); removed += 1
+            except OSError:
+                pass
     return {"removed_files": removed, "message": "Área temporária limpa."}

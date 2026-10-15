@@ -57,7 +57,15 @@ def set_program(payload: ProgramSelectionIn, db: Session = Depends(get_db), user
     uid=_user_id(user)
     if payload.program_id is not None and not db.query(Program).filter_by(id=payload.program_id).first():
         raise HTTPException(404,'Curso não encontrado.')
-    db.execute(__import__('sqlalchemy').text("UPDATE public.user_profiles SET program_id=:pid, updated_at=now() WHERE user_id=:uid"), {'pid':payload.program_id,'uid':uid})
+    db.execute(__import__('sqlalchemy').text("""
+        INSERT INTO public.user_profiles (user_id, role, program_id, display_name)
+        SELECT u.id,
+               CASE WHEN u.raw_app_meta_data->>'role' IN ('admin','teacher','student') THEN u.raw_app_meta_data->>'role' ELSE 'student' END,
+               :pid,
+               COALESCE(NULLIF(u.raw_user_meta_data->>'display_name',''), NULLIF(split_part(COALESCE(u.email,''),'@',1),''), 'Usuário')
+        FROM auth.users u WHERE u.id=:uid
+        ON CONFLICT (user_id) DO UPDATE SET program_id=EXCLUDED.program_id, updated_at=now()
+    """), {'pid':payload.program_id,'uid':uid})
     db.commit(); return {'program_id':payload.program_id}
 
 @router.post('/attempts')
@@ -67,6 +75,8 @@ def record_attempt(payload: AttemptIn, db: Session = Depends(get_db), user=Depen
     if not q:
         raise HTTPException(404, 'Questão não encontrada.')
     letter = payload.selected_letter.upper()
+    if not any(a.letter.upper() == letter for a in q.alternatives):
+        raise HTTPException(422, 'Alternativa inválida para esta questão.')
     correct = any(a.letter.upper() == letter and a.is_correct for a in q.alternatives)
     attempt = QuestionAttempt(user_id=uid, question_id=q.id, selected_letter=letter, is_correct=correct, seconds_spent=payload.seconds_spent)
     db.add(attempt)

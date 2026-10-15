@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import KnowledgeArea, Subject
+from sqlalchemy import text
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
@@ -21,11 +22,16 @@ def list_subjects(area_id: int | None = None, db: Session = Depends(get_db)):
 
 @router.get("/taxonomy")
 def taxonomy(db: Session = Depends(get_db)):
-    rows = db.execute(__import__('sqlalchemy').text("""
-        SELECT taxonomy_version, area_code, area, competency_code, competency,
-               skill_code, skill_description, source_status
-        FROM v_enem_taxonomy
-        ORDER BY area_code, competency_code, skill_code
+    rows = db.execute(text("""
+        SELECT tv.code AS taxonomy_version, ka.code AS area_code, ka.name AS area,
+               c.code AS competency_code, c.name AS competency,
+               sd.code AS skill_code, sd.description AS skill_description,
+               sd.source_status AS source_status
+        FROM public.taxonomy_versions tv
+        JOIN public.competencies c ON c.taxonomy_version_id = tv.id
+        JOIN public.knowledge_areas ka ON ka.id = c.knowledge_area_id
+        LEFT JOIN public.skill_definitions sd ON sd.competency_id = c.id
+        ORDER BY ka.code, c.code, sd.code
     """)).mappings().all()
     return [dict(row) for row in rows]
 
