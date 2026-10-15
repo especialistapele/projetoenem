@@ -13,6 +13,14 @@ router = APIRouter(prefix="/learning", tags=["learning"])
 
 def uid(user): return user.get("id")
 
+
+def simulation_readiness_status(target_count: int, generated_count: int) -> str:
+    if target_count > 0 and generated_count == target_count:
+        return "ready"
+    if generated_count == 0:
+        return "not_generated"
+    return "incomplete"
+
 def require_teacher(authorization: Optional[str] = Header(default=None)):
     user = get_current_supabase_user(authorization)
     role = (user.get("app_metadata") or {}).get("role")
@@ -66,7 +74,17 @@ def answer_question(payload:AttemptIn, user=Depends(get_current_supabase_user), 
 @router.get("/simulations")
 def simulations(db:Session=Depends(get_db)):
     rows=db.query(Simulation).order_by(Simulation.cycle_year,Simulation.sequence).all()
-    return [{"id":s.id,"cycle_year":s.cycle_year,"sequence":s.sequence,"title":s.title,"scheduled_at":s.scheduled_at.isoformat() if s.scheduled_at else None,"question_count":s.question_count} for s in rows]
+    result = []
+    for s in rows:
+        generated = db.query(SimulationQuestion).filter_by(simulation_id=s.id).count()
+        result.append({
+            "id": s.id, "cycle_year": s.cycle_year, "sequence": s.sequence,
+            "title": s.title, "scheduled_at": s.scheduled_at.isoformat() if s.scheduled_at else None,
+            "question_count": s.question_count, "generated_question_count": generated,
+            "status": simulation_readiness_status(s.question_count, generated),
+            "stored_status": s.status,
+        })
+    return result
 
 @router.post("/simulations/seed")
 def seed_simulations(user=Depends(require_admin), db:Session=Depends(get_db)):
@@ -90,7 +108,15 @@ def simulation_detail(simulation_id:int, db:Session=Depends(get_db)):
 def generate_simulation(simulation_id:int,user=Depends(require_admin),db:Session=Depends(get_db)):
     s=db.query(Simulation).filter_by(id=simulation_id).first()
     if not s: raise HTTPException(404,"Simulado não encontrado")
-    if db.query(SimulationQuestion).filter_by(simulation_id=simulation_id).count(): return {"status":"already_generated"}
+    existing_count = db.query(SimulationQuestion).filter_by(simulation_id=simulation_id).count()
+    if existing_count == s.question_count and existing_count > 0:
+        return {"status": "already_generated", "questions": existing_count}
+    if existing_count:
+        raise HTTPException(
+            409,
+            f"Seleção parcial encontrada: {existing_count}/{s.question_count} questões. "
+            "O simulado não será marcado como pronto; revise a seleção existente."
+        )
     # Balanced ENEM-like selection by four knowledge areas when enough classified questions exist.
     areas=db.query(KnowledgeArea).filter(KnowledgeArea.code.in_(["LC","CH","CN","MT"])).order_by(KnowledgeArea.id).all()
     if len(areas) < 4:
@@ -101,7 +127,7 @@ def generate_simulation(simulation_id:int,user=Depends(require_admin),db:Session
         selected.extend(ids)
     selected=list(dict.fromkeys(selected))[:min(180, s.question_count)]
     if len(selected)<s.question_count:
-        raise HTTPException(409,f"Banco insuficiente para um simulado completo: {len(selected)}/180 questões classificadas disponíveis.")
+        raise HTTPException(409,f"Banco insuficiente para um simulado completo: {len(selected)}/{s.question_count} questões classificadas disponíveis.")
     for idx,qid in enumerate(selected,1): db.add(SimulationQuestion(simulation_id=simulation_id,question_id=qid,position=idx))
     s.status="ready"; db.commit(); return {"status":"ready","questions":len(selected)}
 

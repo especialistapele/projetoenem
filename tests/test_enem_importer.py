@@ -8,6 +8,7 @@ from scripts.import_dataset import normalize_area, validate_dataset
 from scripts.parse_pdf import infer_metadata, parse_pdf
 from app.services.enem_importer import candidate_2025
 from app.services.classifier import official_area_for_question_number
+from app.api.learning import simulation_readiness_status
 
 
 class FakeResponse:
@@ -43,6 +44,13 @@ class EnemImporterTests(unittest.TestCase):
         valid, reason = validate_pdf_bytes(b"%PDF-1.7\nsmall")
         self.assertFalse(valid)
         self.assertIn("pequeno", reason)
+
+    def test_simulation_readiness_status_never_marks_partial_selection_ready(self):
+        self.assertEqual(simulation_readiness_status(180, 0), "not_generated")
+        self.assertEqual(simulation_readiness_status(180, 70), "incomplete")
+        self.assertEqual(simulation_readiness_status(180, 179), "incomplete")
+        self.assertEqual(simulation_readiness_status(180, 180), "ready")
+        self.assertEqual(simulation_readiness_status(0, 0), "not_generated")
 
     def test_official_area_mapping_uses_enem_question_ranges(self):
         self.assertEqual(official_area_for_question_number(1), "Linguagens")
