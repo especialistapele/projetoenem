@@ -371,6 +371,14 @@ class Simulation(Base):
     status = Column(String(20), nullable=False, default="scheduled")
 
 
+class SimulationQuestion(Base):
+    __tablename__ = "simulation_questions"
+    id = Column(BigInteger, primary_key=True)
+    simulation_id = Column(BigInteger, ForeignKey("simulations.id", ondelete="CASCADE"), nullable=False)
+    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
+    position = Column(Integer, nullable=False)
+
+
 class SimulationAttempt(Base):
     __tablename__ = "simulation_attempts"
     id = Column(BigInteger, primary_key=True)
