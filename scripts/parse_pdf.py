@@ -65,6 +65,10 @@ def infer_metadata(filename: str) -> dict:
     return {"year": int(myear.group(0)) if myear else None, "day": int(mday.group(1)) if mday else None,
             "caderno": int(mcd.group(1)) if mcd else None, "special_version": special}
 
+def expected_count_or_actual(questions: list[dict], expected_count: int | None) -> int:
+    return expected_count if expected_count is not None else len(questions)
+
+
 def parse_pdf(pdf_path: str, kind: str="prova") -> dict:
     pages=extract_raw_pages(pdf_path)
     meta=infer_metadata(Path(pdf_path).name)
@@ -73,12 +77,28 @@ def parse_pdf(pdf_path: str, kind: str="prova") -> dict:
         answers=parse_answer_key(text)
         return {"source_file":Path(pdf_path).name,"document_type":"gabarito","pages":len(pages),"answers_found":len(answers),"answers":answers,**meta}
     questions=split_into_questions(text)
+    raw_numbers = [int(m.group(1)) for m in QUESTION_START_PATTERN.finditer(text)]
+    duplicate_numbers = len(raw_numbers) != len(set(raw_numbers))
+    expected_count = 90 if meta.get("day") in (1, 2) else None
+    complete_numbering = (
+        expected_count is None
+        or (len(questions) == expected_count and {q["number"] for q in questions} == set(range(1, expected_count + 1)))
+    )
     diagnostics={"min_question":min([q["number"] for q in questions],default=None),
                  "max_question":max([q["number"] for q in questions],default=None),
                  "questions_with_5_alternatives":sum(len(q["alternatives"])==5 for q in questions),
-                 "duplicate_numbers": len(questions) != len({q["number"] for q in questions}),
-                 "expected_question_count": 90 if meta.get("day") in (1,2) else None}
-    diagnostics["quality_status"] = "ready" if questions and diagnostics["questions_with_5_alternatives"] == len(questions) and not diagnostics["duplicate_numbers"] else "review"
+                 "duplicate_numbers": duplicate_numbers,
+                 "raw_question_headers": len(raw_numbers),
+                 "expected_question_count": expected_count,
+                 "complete_numbering": complete_numbering}
+    diagnostics["quality_status"] = (
+        "ready"
+        if questions
+        and diagnostics["questions_with_5_alternatives"] == expected_count_or_actual(questions, expected_count)
+        and not diagnostics["duplicate_numbers"]
+        and complete_numbering
+        else "review"
+    )
     return {"source_file":Path(pdf_path).name,"document_type":"caderno","pages":len(pages),"questions_found":len(questions),"questions":questions,
             "diagnostics":diagnostics,**meta}
 
