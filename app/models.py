@@ -91,6 +91,7 @@ class Question(Base):
     taxonomy_skill_id = Column(Integer, ForeignKey("skill_definitions.id"))
     source_text = Column(Text)
     statement_text = Column(Text, nullable=False)
+    is_annulled = Column(Boolean, nullable=False, default=False, server_default="false")
     image_url = Column(Text)
     difficulty_estimate = Column(Numeric(4, 3))
     search_vector = Column(TSVECTOR)
