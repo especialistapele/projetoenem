@@ -199,6 +199,14 @@
 <div class="panel-head"><div><h3>4. Validar e preparar lote</h3><p>Audita pares prova/gabarito, duplicidades e qualidade antes de preparar o lote. A gravação definitiva fica separada.</p></div><div><button id="preflightImport">🛡 Validar staging</button> <button class="primary" id="prepareImport">🧩 Preparar lote</button> <button id="dryRunImport">🔍 Simular importação</button> <button class="primary" id="commitImport">💾 Gravar no banco</button></div></div>
 <div class="import-manifest" id="preparedImport"><div class="empty">Nenhum lote preparado.</div></div>
 </div>
+<div class="panel">
+<div class="panel-head"><div><h3>5. Ciclo oficial automatizado</h3><p>Valida três provas oficiais completas (2023, 2024 e 2025) antes de gravar até 540 questões. O teste baixa e extrai PDFs, mas só grava no banco após confirmação.</p></div><div class="actions"><button id="verifyOfficialCycle">🔎 Validar ciclo 2023–2025</button><button class="primary" id="commitOfficialCycle" disabled>💾 Importar questões validadas</button></div></div>
+<div class="import-manifest" id="officialCycleReport"><div class="empty">Execute a validação para ver o relatório antes de importar.</div></div>
+</div>
+<div class="panel">
+<div class="panel-head"><div><h3>6. Taxonomia oficial</h3><p>Extrai a Matriz de Referência do INEP, valida as quatro áreas, 30 competências e 120 habilidades. A gravação fica separada da validação.</p></div><div class="actions"><button id="verifyOfficialTaxonomy">🔎 Validar matriz oficial</button><button class="primary" id="commitOfficialTaxonomy" disabled>💾 Gravar taxonomia</button></div></div>
+<div class="import-manifest" id="officialTaxonomyReport"><div class="empty">Execute a validação para conferir a taxonomia.</div></div>
+</div>
 </section>
 </main><footer class="site-footer"><span>Desenvolvido por <a href="https://yansix.tech" target="_blank" rel="noopener">Yansix</a> com S2 - 2026</span></footer>
 </div>
