@@ -13,7 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -236,7 +236,7 @@ class QuestionClassification(Base):
     confidence = Column(Numeric(5, 4), nullable=False, default=0)
     method = Column(String(40), nullable=False, default="heuristic")
     status = Column(String(30), nullable=False, default="candidate")
-    evidence = Column(Text, nullable=False, default="{}")
+    evidence = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -249,7 +249,7 @@ class TopicPredictionResult(Base):
     probability = Column(Numeric(8, 6), nullable=False, default=0)
     rank = Column(Integer)
     model_version = Column(String(50), nullable=False, default="predictor-v1")
-    factors = Column(Text, nullable=False, default="{}")
+    factors = Column(JSONB, nullable=False, default=dict)
     generated_at = Column(DateTime(timezone=True), server_default=func.now())
     topic = relationship("Topic")
     explanations = relationship("TopicPredictionExplanation", back_populates="prediction", cascade="all, delete-orphan")
