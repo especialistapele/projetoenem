@@ -8,16 +8,14 @@ def synthetic_matrix():
     competency_counts = {"LC": 9, "CH": 6, "CN": 8, "MT": 7}
     for code, area_name in AREA_HEADERS:
         lines.append(area_name)
-        skill_number = 1
-        for competency_number in range(1, competency_counts[code] + 1):
+        count = competency_counts[code]
+        for competency_index in range(count):
+            competency_number = competency_index + 1
             lines.append(f"Competência de área {competency_number} - Competência {code} {competency_number}.")
-            skill_count = 4 if skill_number <= 28 else 2
-            for _ in range(skill_count):
-                if skill_number > 30:
-                    break
+            first_skill = competency_index * 30 // count + 1
+            last_skill = (competency_index + 1) * 30 // count
+            for skill_number in range(first_skill, last_skill + 1):
                 lines.append(f"H{skill_number} - Descrição oficial de teste da habilidade {skill_number} na área {code}.")
-                skill_number += 1
-        assert skill_number == 31, (code, skill_number)
     return "\\n".join(lines)
 
 
