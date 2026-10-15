@@ -126,13 +126,15 @@ def _metadata_from_path(path: Path, data: dict):
     day = data.get("day")
     color = data.get("color")
     for i, part in enumerate(parts):
-        if part.isdigit() and 1998 <= int(part) <= 2025:
+        if part.isdigit() and 1998 <= int(part) <= 2026:
             year = year or int(part)
         if part.startswith("dia_"):
             try: day = day or int(part.split("_", 1)[1])
             except ValueError: pass
         if part.lower() in {"azul", "amarelo", "branco", "rosa", "cinza"}:
             color = color or part.capitalize()
+    if not color and data.get("caderno") is not None:
+        color = {1: "Azul", 2: "Amarelo", 3: "Branco", 4: "Rosa", 5: "Cinza"}.get(int(data["caderno"]))
     return year, day, color
 
 
@@ -146,8 +148,7 @@ def prepare_dataset():
         try: data = _load_parsed(path)
         except Exception: continue
         year, day, color = _metadata_from_path(path, data)
-        cd = data.get("caderno")
-        key = (year, day, cd or (color or "").lower())
+        key = (year, day, (color or "").lower())
         typ = data.get("document_type")
         if data.get("special_version"):
             continue
@@ -159,11 +160,11 @@ def prepare_dataset():
     questions = []
     groups = []
     for key, (path, notebook) in sorted(notebooks.items(), key=lambda x: str(x[0])):
-        year, day, code = key
+        year, day, color_code = key
         answer_data = keys.get(key, (None, {}))[1]
         answers = answer_data.get("answers", {}) or {}
         items = notebook.get("questions", []) or []
-        group = {"year": year, "day": day, "caderno": code,
+        group = {"year": year, "day": day, "color": color_code,
                  "questions": len(items), "answers": len(answers),
                  "matched_answers": 0, "status": "ready" if answers else "review"}
         for q in items:
@@ -178,7 +179,7 @@ def prepare_dataset():
                 alts.append(a)
             if answer: group["matched_answers"] += 1
             questions.append({
-                "exam": {"year": year, "edition": "regular", "color": str(code or "azul").lower(), "day": day},
+                "exam": {"year": year, "edition": "regular", "color": str(color_code or "azul").lower(), "day": day},
                 "number": number,
                 "area": cls.get("area"),
                 "subject": cls.get("subject"),
@@ -189,7 +190,7 @@ def prepare_dataset():
             })
         groups.append(group)
 
-    payload = {"exams": [{"year": g["year"], "edition": "regular", "color": str(g.get("caderno") or "azul").lower(), "day": g["day"]}
+    payload = {"exams": [{"year": g["year"], "edition": "regular", "color": str(g.get("color") or "azul").lower(), "day": g["day"]}
                           for g in groups],
                "questions": questions,
                "groups": groups,
@@ -221,10 +222,12 @@ def cleanup_processed():
     import shutil
     removed = 0
     if BASE_DIR.exists():
-        for path in BASE_DIR.rglob("*"):
-            if path.is_file() and path.suffix.lower() == ".pdf":
-                try:
-                    path.unlink(); removed += 1
-                except OSError:
-                    pass
+        for path in BASE_DIR.rglob("*.pdf"):
+            # Só remove o PDF quando o parser já produziu o artefato correspondente.
+            if not path.with_suffix(".parsed.json").is_file():
+                continue
+            try:
+                path.unlink(); removed += 1
+            except OSError:
+                pass
     return {"removed_files": removed, "message": "Área temporária limpa."}
