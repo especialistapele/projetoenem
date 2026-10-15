@@ -17,7 +17,6 @@ def get_priority_ranking(
     trend_weight: float = Query(0.15, ge=0, le=1),
     recency_decay: float = Query(0.35, gt=0, le=2),
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
 ):
     if recency_weight + trend_weight > 1:
         raise HTTPException(status_code=400, detail="A soma dos pesos de recência e tendência deve ser <= 1")
@@ -72,6 +71,7 @@ def generate_predictions(
     trend_weight: float = Query(0.15, ge=0, le=1),
     recency_decay: float = Query(0.35, gt=0, le=2),
     db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
 ):
     if recency_weight + trend_weight > 1:
         raise HTTPException(status_code=400, detail="A soma dos pesos de recência e tendência deve ser <= 1")
