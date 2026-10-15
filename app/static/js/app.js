@@ -347,11 +347,11 @@ window.renderActiveSimulation = () => {
     </div>
     <div class="question-card">
       <p>${esc(q.statement_text || '')}</p>
-      <div class="simulation-options">${(q.alternatives || []).map(a => `
+      ${q.is_annulled ? `<div class="note">Esta questão foi anulada oficialmente pelo INEP e não contará na pontuação.</div><button onclick="answerSimulation(${state.id},${q.question_id},'A')">Registrar e continuar</button>` : `<div class="simulation-options">${(q.alternatives || []).map(a => `
         <button class="answer-option ${selected === a.letter ? 'selected' : ''}" aria-pressed="${selected === a.letter ? 'true' : 'false'}"
           onclick="answerSimulation(${state.id},${q.question_id},'${a.letter}')">
           <strong>${a.letter})</strong> ${esc(a.text)}
-        </button>`).join('')}</div>
+        </button>`).join('')}</div>`}
     </div>
     <div class="simulation-nav">
       <button class="secondary" onclick="navigateSimulation(-1)" ${state.index === 0 ? 'disabled' : ''}>Anterior</button>
