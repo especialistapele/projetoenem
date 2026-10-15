@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.error import URLError
 from unittest.mock import patch
 
 from app.services.enem_importer import download_pdf, validate_pdf_bytes
@@ -90,6 +91,21 @@ class EnemImporterTests(unittest.TestCase):
                     "source_url": "https://example.com/2025_PV_D1_CD1_Azul.pdf",
                 }, Path(tmp) / "data" / "enem")
             self.assertEqual(list(Path(tmp).rglob("*.pdf")), [])
+
+    def test_download_retries_transient_connection_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base_dir = root / "data" / "enem"
+            url = "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_PV_impresso_D1_CD1.pdf"
+            data = b"%PDF-1.7\\n" + (b"x" * 11000)
+            response = FakeResponse(data, url)
+            with patch("app.services.enem_importer.urlopen", side_effect=[URLError("temporary reset"), response]) as mocked, patch("app.services.enem_importer.time.sleep"):
+                result = download_pdf({
+                    "year": 2025, "day": 1, "color": "Azul", "document_type": "caderno",
+                    "filename": "2025_PV_impresso_D1_CD1.pdf", "source_url": url,
+                }, base_dir)
+            self.assertEqual(mocked.call_count, 2)
+            self.assertEqual(result["status"], "downloaded")
 
     def test_download_returns_project_relative_path_usable_by_parse_route(self):
         with tempfile.TemporaryDirectory() as tmp:
