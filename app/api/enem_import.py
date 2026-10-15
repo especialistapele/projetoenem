@@ -284,17 +284,19 @@ def prepare_dataset(only_paths: set[str] | None = None):
             if not cls.get("area") or not cls.get("subject"):
                 group["unclassified_questions"] += 1
             answer = answers.get(str(number), answers.get(number))
+            is_annulled = str(answer or "").strip().upper() == "ANULADO"
             alts = []
             for alt in q.get("alternatives", []) or []:
                 a = dict(alt)
-                a["is_correct"] = bool(answer and a.get("letter", "").upper() == str(answer).upper())
+                a["is_correct"] = bool(answer and not is_annulled and a.get("letter", "").upper() == str(answer).upper())
                 alts.append(a)
-            if answer and sum(1 for alt in alts if alt["is_correct"]) == 1:
+            if answer and (is_annulled or sum(1 for alt in alts if alt["is_correct"]) == 1):
                 group["matched_answers"] += 1
             subject_name = cls.get("subject") or ("Classificação pendente" if official_area else None)
             questions.append({
                 "exam": {"year": year, "edition": "regular", "color": str(color_code or "azul").lower(), "day": day},
                 "number": number,
+                "is_annulled": is_annulled,
                 "area": cls.get("area"),
                 "subject": subject_name,
                 "statement_text": text,
@@ -313,8 +315,8 @@ def prepare_dataset(only_paths: set[str] | None = None):
                "questions": questions,
                "groups": groups,
                "diagnostics": {"groups": len(groups), "questions": len(questions),
-                               "questions_with_answer": sum(1 for q in questions if any(a.get("is_correct") for a in q["alternatives"])),
-                               "questions_without_answer": sum(1 for q in questions if not any(a.get("is_correct") for a in q["alternatives"])),
+                               "questions_with_answer": sum(1 for q in questions if q.get("is_annulled") or any(a.get("is_correct") for a in q["alternatives"])),
+                               "questions_without_answer": sum(1 for q in questions if not q.get("is_annulled") and not any(a.get("is_correct") for a in q["alternatives"])),
                                "questions_unclassified": sum(1 for q in questions if not q.get("area") or not (q.get("classification") or {}).get("subject"))}}
     out = BASE_DIR / "prepared_dataset.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
