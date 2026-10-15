@@ -304,10 +304,16 @@ def prepare_dataset(only_paths: set[str] | None = None):
                 "topics": [],
                 "classification": cls,
             })
-        if group["matched_answers"] != len(items) or group["unclassified_questions"] > 0 or any(
+        structural_issue = group["matched_answers"] != len(items) or any(
             len(q.get("alternatives", []) or []) != 5 for q in items
-        ):
+        )
+        if structural_issue:
             group["status"] = "review"
+        elif group["unclassified_questions"] > 0:
+            # Official question-number ranges establish the area; unresolved discipline remains flagged.
+            group["status"] = "ready_with_review"
+        else:
+            group["status"] = "ready"
         groups.append(group)
 
     payload = {"exams": [{"year": g["year"], "edition": "regular", "color": str(g.get("color") or "azul").lower(), "day": g["day"]}
