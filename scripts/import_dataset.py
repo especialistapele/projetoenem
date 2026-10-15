@@ -138,11 +138,11 @@ def run(path, dry_run=False):
                 db.flush()
                 created["exams"] += 1
 
+            subject = None
+            if item.get("subject"):
+                subject = find_or_create_subject(db, item["subject"], item.get("area", "Não classificada"))
             question = db.query(Question).filter_by(exam_id=exam.id, number=item["number"]).first()
             if not question:
-                subject = None
-                if item.get("subject"):
-                    subject = find_or_create_subject(db, item["subject"], item.get("area", "Não classificada"))
                 question = Question(exam_id=exam.id, number=item["number"],
                                     subject_id=subject.id if subject else None,
                                     source_text=item.get("source_text"),
@@ -150,6 +150,13 @@ def run(path, dry_run=False):
                 db.add(question)
                 db.flush()
                 created["questions"] += 1
+            else:
+                # Reimportações corrigem texto e classificação sem duplicar a questão.
+                question.statement_text = item["statement_text"]
+                if item.get("source_text") is not None:
+                    question.source_text = item["source_text"]
+                if subject:
+                    question.subject_id = subject.id
 
             for alt in item.get("alternatives", []):
                 exists = db.query(Alternative).filter_by(question_id=question.id, letter=alt["letter"]).first()
