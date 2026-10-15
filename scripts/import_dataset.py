@@ -62,6 +62,8 @@ def validate_dataset(payload):
     for index, item in enumerate(questions, start=1):
         if not isinstance(item, dict) or not str(item.get("statement_text") or "").strip():
             raise ValueError(f"Questão {index}: enunciado ausente.")
+        if not str(item.get("area") or "").strip() or not str(item.get("subject") or "").strip():
+            raise ValueError(f"Questão {index}: área/disciplina não classificada; revise antes de importar.")
         alternatives = item.get("alternatives", []) or []
         if len(alternatives) < 2:
             raise ValueError(f"Questão {index}: menos de duas alternativas extraídas.")
