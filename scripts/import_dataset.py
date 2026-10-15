@@ -55,12 +55,27 @@ def find_or_create_subject(db, name, area_name="Não classificada"):
     return subject
 
 
+def validate_dataset(payload):
+    questions = payload.get("questions", [])
+    if not isinstance(questions, list):
+        raise ValueError("'questions' deve ser uma lista")
+    for index, item in enumerate(questions, start=1):
+        if not isinstance(item, dict) or not str(item.get("statement_text") or "").strip():
+            raise ValueError(f"Questão {index}: enunciado ausente.")
+        alternatives = item.get("alternatives", []) or []
+        if len(alternatives) < 2:
+            raise ValueError(f"Questão {index}: menos de duas alternativas extraídas.")
+        correct_count = sum(1 for alternative in alternatives if alternative.get("is_correct") is True)
+        if correct_count != 1:
+            raise ValueError(f"Questão {index}: esperado exatamente um gabarito correto; encontrado {correct_count}.")
+    return len(questions)
+
+
 def run(path, dry_run=False):
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     exams = payload.get("exams", [])
     questions = payload.get("questions", [])
-    if not isinstance(questions, list):
-        raise ValueError("'questions' deve ser uma lista")
+    validate_dataset(payload)
 
     db = SessionLocal()
     created = {"exams": 0, "questions": 0, "alternatives": 0, "topics": 0, "links": 0}
@@ -106,6 +121,10 @@ def run(path, dry_run=False):
                 if not exists:
                     db.add(Alternative(question_id=question.id, **{k: alt[k] for k in ("letter", "text", "is_correct") if k in alt}))
                     created["alternatives"] += 1
+                else:
+                    # Reimportar um gabarito corrige respostas já existentes sem duplicar alternativas.
+                    exists.text = alt.get("text", exists.text)
+                    exists.is_correct = bool(alt.get("is_correct", False))
 
             for topic_name in item.get("topics", []):
                 subject_id = question.subject_id
