@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 from app.services.enem_importer import download_pdf, validate_pdf_bytes
 from scripts.import_dataset import normalize_area, validate_dataset
-from scripts.parse_pdf import parse_pdf
+from scripts.parse_pdf import infer_metadata, parse_pdf
+from app.services.enem_importer import candidate_2025
 
 
 class FakeResponse:
@@ -41,6 +42,21 @@ class EnemImporterTests(unittest.TestCase):
         valid, reason = validate_pdf_bytes(b"%PDF-1.7\nsmall")
         self.assertFalse(valid)
         self.assertIn("pequeno", reason)
+
+    def test_2025_candidate_urls_use_official_day_and_booklet_codes(self):
+        items = candidate_2025()
+        urls = {item["source_url"] for item in items}
+        self.assertIn("https://download.inep.gov.br/enem/provas_e_gabaritos/2025_PV_impresso_D1_CD1.pdf", urls)
+        self.assertIn("https://download.inep.gov.br/enem/provas_e_gabaritos/2025_GB_impresso_D6_CD7.pdf", urls)
+        day_two_blue = next(item for item in items if item["day"] == 2 and item["caderno"] == 7 and item["document_type"] == "caderno")
+        self.assertEqual(day_two_blue["color"], "Azul")
+
+    def test_metadata_uses_pdf_cover_for_day_and_color(self):
+        metadata = infer_metadata("2025_GB_impresso_D6_CD7.pdf", "ENEM 2025\\n2º dia\\nCADERNO 7\\nAzul")
+        self.assertEqual(metadata["year"], 2025)
+        self.assertEqual(metadata["day"], 2)
+        self.assertEqual(metadata["caderno"], 7)
+        self.assertEqual(metadata["color"], "Azul")
 
     def test_download_rejects_untrusted_host_before_network_access(self):
         with tempfile.TemporaryDirectory() as tmp:
