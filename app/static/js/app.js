@@ -425,6 +425,7 @@ window.finishSimulation = async id => {
         <small>Resultado · ${esc(result.title || state.title)}</small>
         <h3>${result.correct} de ${result.answered} acertos</h3>
         <p>${Math.round((result.accuracy || 0) * 100)}% de aproveitamento</p>
+        ${result.annulled_questions ? `<p>${result.annulled_questions} questão(ões) anulada(s) pelo INEP não pontuadas.</p>` : ''}
         ${result.estimated_score != null ? `<p>Estimativa pedagógica: ${result.estimated_score}</p>` : ''}
         <p class="muted">${esc(result.score_note || 'Resultado baseado nas respostas registradas.')}</p>
         <div class="simulation-nav"><button onclick="loadSimulations()">Voltar aos simulados</button></div>
