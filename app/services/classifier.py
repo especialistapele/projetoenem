@@ -50,3 +50,21 @@ def classify_question(text: str) -> dict:
     if len(candidates) > 1 and candidates[0][0] == candidates[1][0]:
         confidence = min(confidence, 0.55)
     return {"area": area, "subject": subject, "confidence": round(confidence, 3), "keywords": hits}
+
+
+
+def official_area_for_question_number(number: int) -> str | None:
+    """Infere a área pela numeração oficial das questões objetivas do ENEM."""
+    try:
+        n = int(number)
+    except (TypeError, ValueError):
+        return None
+    if 1 <= n <= 45:
+        return "Linguagens"
+    if 46 <= n <= 90:
+        return "Ciências Humanas"
+    if 91 <= n <= 135:
+        return "Ciências da Natureza"
+    if 136 <= n <= 180:
+        return "Matemática"
+    return None
