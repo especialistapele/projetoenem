@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from app.services.enem_importer import download_pdf, validate_pdf_bytes
 from scripts.import_dataset import normalize_area, validate_dataset
+from scripts.parse_pdf import parse_pdf
 
 
 class FakeResponse:
@@ -37,7 +38,7 @@ class EnemImporterTests(unittest.TestCase):
         self.assertIn("PDF", reason)
 
     def test_rejects_tiny_pdf_payload(self):
-        valid, reason = validate_pdf_bytes(b"%PDF-1.7\\nsmall")
+        valid, reason = validate_pdf_bytes(b"%PDF-1.7\nsmall")
         self.assertFalse(valid)
         self.assertIn("pequeno", reason)
 
@@ -59,7 +60,7 @@ class EnemImporterTests(unittest.TestCase):
             root = Path(tmp)
             base_dir = root / "data" / "enem"
             url = "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_PV_D1_CD1_Azul.pdf"
-            data = b"%PDF-1.7\\n" + (b"x" * 11000)
+            data = b"%PDF-1.7\n" + (b"x" * 11000)
             with patch("app.services.enem_importer.urlopen", return_value=FakeResponse(data, url)):
                 result = download_pdf({
                     "year": 2025,
@@ -147,6 +148,47 @@ class EnemImporterTests(unittest.TestCase):
         }]}
         with self.assertRaisesRegex(ValueError, "exatamente um gabarito correto"):
             validate_dataset(payload)
+
+
+
+class PdfParserCompletenessTests(unittest.TestCase):
+    @staticmethod
+    def make_exam(count=90, duplicate_first=False):
+        blocks = []
+        numbers = list(range(1, count + 1))
+        if duplicate_first:
+            numbers.insert(1, 1)
+        for number in numbers:
+            blocks.append(
+                f"QUESTÃO {number} Enunciado da questão {number}\n"
+                "A) Alternativa A\nB) Alternativa B\nC) Alternativa C\n"
+                "D) Alternativa D\nE) Alternativa E"
+            )
+        return "\n".join(blocks)
+
+    def test_parser_accepts_complete_booklet_with_inline_headers(self):
+        text = self.make_exam(90)
+        with patch("scripts.parse_pdf.extract_raw_pages", return_value=[text]):
+            result = parse_pdf("2025_PV_D1_CD1_Azul.pdf")
+        self.assertEqual(result["questions_found"], 90)
+        self.assertEqual(result["questions"][0]["statement_text"], "Enunciado da questão 1")
+        self.assertEqual(result["diagnostics"]["quality_status"], "ready")
+        self.assertTrue(result["diagnostics"]["complete_numbering"])
+
+    def test_parser_marks_incomplete_booklet_for_review(self):
+        text = self.make_exam(89)
+        with patch("scripts.parse_pdf.extract_raw_pages", return_value=[text]):
+            result = parse_pdf("2025_PV_D1_CD1_Azul.pdf")
+        self.assertEqual(result["questions_found"], 89)
+        self.assertEqual(result["diagnostics"]["quality_status"], "review")
+        self.assertFalse(result["diagnostics"]["complete_numbering"])
+
+    def test_parser_detects_duplicate_question_headers(self):
+        text = self.make_exam(90, duplicate_first=True)
+        with patch("scripts.parse_pdf.extract_raw_pages", return_value=[text]):
+            result = parse_pdf("2025_PV_D1_CD1_Azul.pdf")
+        self.assertTrue(result["diagnostics"]["duplicate_numbers"])
+        self.assertEqual(result["diagnostics"]["quality_status"], "review")
 
 
 if __name__ == "__main__":
