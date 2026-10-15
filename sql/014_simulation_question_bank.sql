@@ -13,12 +13,21 @@ CREATE TABLE IF NOT EXISTS public.simulation_questions (
 INSERT INTO public.simulation_questions (simulation_id, question_id, position)
 SELECT simulation_id, question_id, position
 FROM public.simulation_attempts
-WHERE user_id IS NULL
-ON CONFLICT (simulation_id, question_id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- Remove apenas as linhas antigas de composição; respostas vinculadas a alunos são preservadas.
 DELETE FROM public.simulation_attempts
 WHERE user_id IS NULL;
+
+-- Se o modelo antigo deixou mais de uma resposta para a mesma questão/aluno,
+-- preserva a resposta mais recente antes de criar a restrição de unicidade.
+DELETE FROM public.simulation_attempts older
+USING public.simulation_attempts newer
+WHERE older.user_id IS NOT NULL
+  AND newer.user_id = older.user_id
+  AND newer.simulation_id = older.simulation_id
+  AND newer.question_id = older.question_id
+  AND newer.id > older.id;
 
 -- Evita respostas duplicadas para a mesma questão de um mesmo aluno.
 CREATE UNIQUE INDEX IF NOT EXISTS simulation_attempts_student_question_uidx
