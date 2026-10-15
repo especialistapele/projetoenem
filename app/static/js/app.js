@@ -302,6 +302,11 @@ async function loadDashboardHistory(){try{const d=await api('/learning/dashboard
 async function loadSimulations(){
   try {
     const rows = await api('/learning/simulations');
+    let isAdmin = false;
+    if (window.supabaseClient) {
+      const {data} = await window.supabaseClient.auth.getSession();
+      isAdmin = data.session?.user?.app_metadata?.role === 'admin';
+    }
     const labels = {ready:'Pronto', not_generated:'Aguardando questões', incomplete:'Incompleto'};
     $('#simulationCards').innerHTML = rows.map(s => {
       const generated = Number(s.generated_question_count || 0);
@@ -311,7 +316,11 @@ async function loadSimulations(){
         <small>Simulado ${s.sequence}</small>
         <h3>${esc(s.title)}</h3>
         <p>${generated}/${target} questões · ${esc(labels[s.status] || s.status || 'Indisponível')}</p>
-        <button ${ready ? `onclick="openSimulation(${s.id})"` : 'disabled'}>${ready ? 'Iniciar simulado' : 'Em preparação'}</button>
+        ${ready
+          ? `<button onclick="openSimulation(${s.id})">Iniciar simulado</button>`
+          : (isAdmin
+            ? `<button onclick="generateSimulation(${s.id})">Gerar simulado</button>`
+            : '<button disabled>Em preparação</button>')}
       </article>`;
     }).join('') || '<div class="empty">Nenhum simulado cadastrado.</div>';
   } catch(e) {
@@ -389,6 +398,18 @@ window.answerSimulation = async (sid,qid,letter) => {
       window.renderActiveSimulation();
     }
   } catch(e) { alert(e.message); }
+};
+window.generateSimulation = async id => {
+  if (!confirm('Tentar gerar este simulado com as questões válidas disponíveis?')) return;
+  try {
+    const result = await api(`/learning/simulations/${id}/generate`, {method:'POST'});
+    alert(result.status === 'ready' || result.status === 'already_generated'
+      ? `Simulado pronto: ${result.questions || 'seleção já existente'} questões.`
+      : 'Solicitação concluída.');
+    await loadSimulations();
+  } catch(e) {
+    alert('Não foi possível gerar o simulado: ' + e.message);
+  }
 };
 window.finishSimulation = async id => {
   const state = window._activeSimulation;
