@@ -36,7 +36,7 @@ Acesse `http://127.0.0.1:8001`.
 Com o backend local ativo, autenticado como administrador, os endpoints abaixo permitem executar o fluxo sem acessar diretamente o banco pelo navegador:
 
 - `POST /enem-import/import-official-cycle` com `{"dry_run": true}`: baixa provas regulares de 2023, 2024 e 2025 (180 questões por ano), extrai questões e gabaritos e valida o lote sem gravar questões no banco.
-- Repita com `{"dry_run": false}` somente quando o relatório indicar seis cadernos de 90 questões, gabaritos correspondentes e nenhuma falha estrutural. Isso fornece três provas distintas para os três simulados do ciclo.
+- Repita com `{"dry_run": false}` somente quando o relatório indicar seis cadernos de 90 questões, gabaritos correspondentes e nenhuma falha estrutural. Isso fornece três provas distintas para os três simulados do ciclo. Após a gravação, a tela tenta gerar os três simulados automaticamente e informa individualmente os que não puderem ser concluídos.
 - `POST /enem-import/taxonomy` com `{"dry_run": true}`: baixa a Matriz de Referência oficial do INEP e verifica as quatro áreas, 30 competências e 120 habilidades antes de gravar.
 - Repita a importação da taxonomia com `{"dry_run": false}` após o relatório de validação estar correto.
 
