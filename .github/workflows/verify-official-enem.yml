@@ -1,0 +1,21 @@
+name: Verify official ENEM sources
+
+on:
+  push:
+    branches: ["feature/official-taxonomy-import"]
+  workflow_dispatch:
+
+jobs:
+  verify-official-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Download and validate official source files
+        run: python scripts/verify_official_enem.py
