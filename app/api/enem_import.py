@@ -24,7 +24,7 @@ def storage_quota():
     return dict(row) if row else {"used_bytes": 0, "warning_bytes": 419430400, "limit_bytes": 471859200, "remaining_bytes": 471859200, "usage_percent": 0, "status": "ok"}
 
 class DiscoveryRequest(BaseModel):
-    year_start:int=Field(2025,ge=1998,le=2025); year_end:int=Field(2025,ge=1998,le=2025); application:str="regular"
+    year_start:int=Field(2025,ge=1998,le=2026); year_end:int=Field(2026,ge=1998,le=2026); application:str="regular"
 
 @router.post("/discover")
 def discover_files(payload:DiscoveryRequest):
