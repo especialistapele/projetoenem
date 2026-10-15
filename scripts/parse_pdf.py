@@ -56,14 +56,40 @@ def parse_answer_key(full_text: str) -> dict[int,str]:
         if 1 <= n <= 200: answers.setdefault(n,m.group(2).upper())
     return answers
 
-def infer_metadata(filename: str) -> dict:
-    low=filename.lower()
-    mday=re.search(r"(?:dia|d)(\d)", low)
-    mcd=re.search(r"cd(\d+)", low)
-    myear=re.search(r"(?:19|20)\d{2}", low)
-    special=any(x in low for x in ("ledor", "ampliada", "superampliada"))
-    return {"year": int(myear.group(0)) if myear else None, "day": int(mday.group(1)) if mday else None,
-            "caderno": int(mcd.group(1)) if mcd else None, "special_version": special}
+def infer_metadata(filename: str, document_text: str = "") -> dict:
+    low = filename.lower()
+    myear = re.search(r"(?:19|20)\\d{2}", low)
+    mcd = re.search(r"cd(\\d+)", low)
+    year = int(myear.group(0)) if myear else None
+    caderno = int(mcd.group(1)) if mcd else None
+    cover = (document_text or "")[:6000].lower()
+
+    # Em alguns arquivos do INEP, o nome usa D6 para o segundo dia.
+    if re.search(r"2\\s*[º°o]?\\s*dia|segundo dia", cover):
+        day = 2
+    elif re.search(r"1\\s*[º°o]?\\s*dia|primeiro dia", cover):
+        day = 1
+    else:
+        mday = re.search(r"(?:dia|d)(\\d)", low)
+        raw_day = int(mday.group(1)) if mday else None
+        day = 2 if raw_day == 6 else (raw_day if raw_day in (1, 2) else None)
+
+    color_names = ("Azul", "Amarelo", "Branco", "Verde", "Cinza", "Rosa", "Laranja", "Roxo")
+    color = next((name for name in color_names if re.search(r"\\b" + re.escape(name.lower()) + r"\\b", low)), None)
+    if not color:
+        color = next((name for name in color_names if re.search(r"\\b" + re.escape(name.lower()) + r"\\b", cover)), None)
+
+    # Fallback oficial específico da aplicação regular de 2025.
+    if not color and year == 2025:
+        color_by_booklet = {
+            (1, 1): "Azul", (1, 2): "Amarelo", (1, 3): "Branco", (1, 4): "Verde",
+            (2, 5): "Amarelo", (2, 6): "Cinza", (2, 7): "Azul", (2, 8): "Verde",
+            (1, 9): "Laranja", (1, 10): "Roxo", (2, 11): "Laranja", (2, 12): "Roxo",
+        }
+        color = color_by_booklet.get((day, caderno))
+
+    special = any(x in low for x in ("ledor", "ampliada", "superampliada"))
+    return {"year": year, "day": day, "caderno": caderno, "color": color, "special_version": special}
 
 def expected_count_or_actual(questions: list[dict], expected_count: int | None) -> int:
     return expected_count if expected_count is not None else len(questions)
