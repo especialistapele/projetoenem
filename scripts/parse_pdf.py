@@ -97,8 +97,8 @@ def expected_count_or_actual(questions: list[dict], expected_count: int | None) 
 
 def parse_pdf(pdf_path: str, kind: str="prova") -> dict:
     pages=extract_raw_pages(pdf_path)
-    meta=infer_metadata(Path(pdf_path).name)
     text="\n".join(pages)
+    meta=infer_metadata(Path(pdf_path).name, text)
     if kind == "gabarito":
         answers=parse_answer_key(text)
         return {"source_file":Path(pdf_path).name,"document_type":"gabarito","pages":len(pages),"answers_found":len(answers),"answers":answers,**meta}
