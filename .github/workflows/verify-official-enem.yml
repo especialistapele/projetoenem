@@ -18,4 +18,4 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Download and validate official source files
-        run: python scripts/verify_official_enem.py
+        run: python -m scripts.verify_official_enem
