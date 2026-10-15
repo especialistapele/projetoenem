@@ -1,10 +1,11 @@
+import ssl
 import tempfile
 import unittest
 from pathlib import Path
 from urllib.error import URLError
 from unittest.mock import patch
 
-from app.services.enem_importer import download_pdf, validate_pdf_bytes
+from app.services.enem_importer import download_pdf, validate_pdf_bytes, _urlopen_verified
 from scripts.import_dataset import normalize_area, validate_dataset
 from scripts.parse_pdf import infer_metadata, parse_pdf
 from app.services.enem_importer import candidate_2025
@@ -36,6 +37,14 @@ class FakeResponse:
 
 
 class EnemImporterTests(unittest.TestCase):
+    def test_official_download_uses_verified_certifi_ca_context(self):
+        with patch("app.services.enem_importer.urlopen") as mocked:
+            _urlopen_verified("https://download.inep.gov.br/test.pdf", timeout=7)
+        context = mocked.call_args.kwargs["context"]
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(mocked.call_args.kwargs["timeout"], 7)
+
     def test_rejects_non_pdf_payload(self):
         valid, reason = validate_pdf_bytes(b"not a pdf" * 2000)
         self.assertFalse(valid)
