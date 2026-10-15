@@ -7,6 +7,7 @@ from app.database import SessionLocal
 from sqlalchemy import text
 from pydantic import BaseModel, Field
 from app.services.enem_importer import discover, download_pdf, write_manifest, classify_document, file_identity, validate_pdf_bytes
+from scripts.import_taxonomy import run_import as run_taxonomy_import
 from scripts.parse_pdf import parse_pdf
 from app.services.classifier import classify_question, official_area_for_question_number
 from scripts.import_dataset import run as import_dataset_run
@@ -29,6 +30,21 @@ class DiscoveryRequest(BaseModel):
 class ImportRequest(BaseModel):
     dataset_path: str = "data/enem/prepared_dataset.json"
     dry_run: bool = True
+
+class TaxonomyImportRequest(BaseModel):
+    dry_run: bool = True
+
+@router.post("/taxonomy")
+def import_official_taxonomy(payload: TaxonomyImportRequest):
+    """Extrai e valida a Matriz oficial do INEP; por padrão não grava alterações."""
+    if SessionLocal is None:
+        raise HTTPException(503, "Banco não configurado.")
+    try:
+        with SessionLocal() as db:
+            return run_taxonomy_import(db, dry_run=payload.dry_run)
+    except Exception as exc:
+        raise HTTPException(422, f"Falha na importação da taxonomia oficial: {exc}")
+
 
 @router.post("/discover")
 def discover_files(payload:DiscoveryRequest):
