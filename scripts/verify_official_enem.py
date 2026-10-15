@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from urllib.request import Request
 
-from app.services.enem_importer import candidate_2025, download_pdf
+from app.services.enem_importer import candidate_official_cycle, download_pdf
 from scripts.import_taxonomy import SOURCE_URL, extract_matrix_text, parse_matrix_text, _urlopen_verified
 from scripts.parse_pdf import parse_pdf
 
@@ -12,13 +12,9 @@ from scripts.parse_pdf import parse_pdf
 def main():
     with tempfile.TemporaryDirectory(prefix="enem-official-smoke-") as tmp:
         base_dir = Path(tmp) / "data" / "enem"
-        selected = [
-            item for item in candidate_2025()
-            if (item["day"] == 1 and item["caderno"] == 1)
-            or (item["day"] == 2 and item["caderno"] == 7)
-        ]
-        report = {"source": "INEP 2025 regular blue booklets", "files": []}
-        parsed_by_day = {}
+        selected = candidate_official_cycle()
+        report = {"source": "INEP regular exams 2023–2025", "files": []}
+        parsed_by_year_day = {}
         for item in selected:
             record = download_pdf(item, base_dir)
             pdf_path = (base_dir.parent.parent / record["storage_path"]).resolve()
@@ -34,21 +30,22 @@ def main():
                 "quality_status": (parsed.get("diagnostics") or {}).get("quality_status"),
             }
             report["files"].append(row)
-            parsed_by_day.setdefault(item["day"], {})[kind] = parsed
+            parsed_by_year_day.setdefault((item["year"], item["day"]), {})[kind] = parsed
 
-        for day in (1, 2):
-            exam = parsed_by_day[day]["caderno"]
-            key = parsed_by_day[day]["gabarito"]
+        for year in (2023, 2024, 2025):
+          for day in (1, 2):
+            exam = parsed_by_year_day[(year, day)]["caderno"]
+            key = parsed_by_year_day[(year, day)]["gabarito"]
             expected = set(range(1, 91)) if day == 1 else set(range(91, 181))
             question_numbers = {q["number"] for q in exam.get("questions", [])}
             answer_numbers = {int(number) for number in (key.get("answers") or {})}
             if len(question_numbers) != 90 or question_numbers != expected:
-                raise SystemExit(f"Dia {day}: numeração/quantidade de questões inválida: {len(question_numbers)}.")
+                raise SystemExit(f"{year}, dia {day}: numeração/quantidade de questões inválida: {len(question_numbers)}.")
             if len(answer_numbers) != 90 or answer_numbers != expected:
-                raise SystemExit(f"Dia {day}: gabarito não corresponde à numeração da prova: {len(answer_numbers)} respostas.")
+                raise SystemExit(f"{year}, dia {day}: gabarito não corresponde à numeração da prova: {len(answer_numbers)} respostas.")
             if (exam.get("diagnostics") or {}).get("quality_status") != "ready":
-                raise SystemExit(f"Dia {day}: parser marcou a prova para revisão.")
-            report.setdefault("days_validated", []).append(day)
+                raise SystemExit(f"{year}, dia {day}: parser marcou a prova para revisão.")
+            report.setdefault("days_validated", []).append({"year": year, "day": day})
 
     request = Request(SOURCE_URL, headers={"User-Agent": "ENEM-Predict/1.0"})
     with _urlopen_verified(request, timeout=45) as response:
