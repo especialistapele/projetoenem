@@ -1,8 +1,6 @@
 name: Verify official ENEM sources
 
 on:
-  push:
-    branches: ["feature/official-taxonomy-import"]
   workflow_dispatch:
 
 jobs:
