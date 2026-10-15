@@ -1,7 +1,10 @@
 """Smoke-test official INEP PDFs without importing questions into the database."""
 import json
+import sys
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.enem_importer import candidate_2025, download_pdf
 from scripts.parse_pdf import parse_pdf
