@@ -78,7 +78,7 @@ def check_url(url, timeout=8):
         # Some servers reject HEAD; a tiny ranged GET is the fallback.
         try:
             req=Request(url, headers={"User-Agent":"ENEM-Predict/1.0","Range":"bytes=0-1023"})
-            with urlopen(req, timeout=timeout) as r:
+            with _urlopen_verified(req, timeout=timeout) as r:
                 return 200 <= r.status < 400
         except Exception:
             return False
