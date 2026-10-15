@@ -87,6 +87,37 @@ class EnemImporterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "área/disciplina não classificada"):
             validate_dataset(payload)
 
+    def test_dataset_rejects_incomplete_five_option_question(self):
+        payload = {"questions": [{
+            "statement_text": "Enunciado de teste",
+            "area": "Matemática",
+            "subject": "Matemática",
+            "alternatives": [
+                {"letter": "A", "text": "A", "is_correct": True},
+                {"letter": "B", "text": "B", "is_correct": False},
+                {"letter": "C", "text": "C", "is_correct": False},
+                {"letter": "D", "text": "D", "is_correct": False},
+            ],
+        }]}
+        with self.assertRaisesRegex(ValueError, "cinco alternativas"):
+            validate_dataset(payload)
+
+    def test_dataset_rejects_duplicate_alternative_letters(self):
+        payload = {"questions": [{
+            "statement_text": "Enunciado de teste",
+            "area": "Matemática",
+            "subject": "Matemática",
+            "alternatives": [
+                {"letter": "A", "text": "A1", "is_correct": True},
+                {"letter": "A", "text": "A2", "is_correct": False},
+                {"letter": "C", "text": "C", "is_correct": False},
+                {"letter": "D", "text": "D", "is_correct": False},
+                {"letter": "E", "text": "E", "is_correct": False},
+            ],
+        }]}
+        with self.assertRaisesRegex(ValueError, "duplicadas"):
+            validate_dataset(payload)
+
     def test_dataset_rejects_question_without_exactly_one_answer(self):
         payload = {"questions": [{
             "statement_text": "Enunciado de teste",

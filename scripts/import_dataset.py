@@ -65,11 +65,18 @@ def validate_dataset(payload):
         if not str(item.get("area") or "").strip() or not str(item.get("subject") or "").strip():
             raise ValueError(f"Questão {index}: área/disciplina não classificada; revise antes de importar.")
         alternatives = item.get("alternatives", []) or []
-        if len(alternatives) < 2:
-            raise ValueError(f"Questão {index}: menos de duas alternativas extraídas.")
+        letters = [str(alternative.get("letter") or "").strip().upper() for alternative in alternatives]
+        if len(set(letters)) != len(letters):
+            raise ValueError(f"Questão {index}: há letras de alternativas duplicadas.")
+        if any(letter not in {"A", "B", "C", "D", "E"} for letter in letters):
+            raise ValueError(f"Questão {index}: alternativas devem usar letras de A a E.")
+        if any(not str(alternative.get("text") or "").strip() for alternative in alternatives):
+            raise ValueError(f"Questão {index}: existe alternativa sem texto.")
         correct_count = sum(1 for alternative in alternatives if alternative.get("is_correct") is True)
         if correct_count != 1:
             raise ValueError(f"Questão {index}: esperado exatamente um gabarito correto; encontrado {correct_count}.")
+        if len(alternatives) != 5 or set(letters) != {"A", "B", "C", "D", "E"}:
+            raise ValueError(f"Questão {index}: esperado o conjunto completo de cinco alternativas A–E; encontrado {len(alternatives)}.")
     return len(questions)
 
 
