@@ -4,7 +4,7 @@ import argparse, json, re, unicodedata
 from pathlib import Path
 import pdfplumber
 
-QUESTION_START_PATTERN = re.compile(r"(?im)^(?:QUEST[ÃA]O|QUESTAO)\s*(?:N[º°.]?\s*)?(\d{1,3})\s*$")
+QUESTION_START_PATTERN = re.compile(r"(?im)^[ \t]*(?:QUEST[ÃA]O|QUESTAO)[ \t]*(?:N[º°.]?[ \t]*)?(\d{1,3})(?=[ \t.:)\-–—]|$)[ \t]*[.:)\-–—]?[ \t]*")
 ALT_PATTERN = re.compile(r"(?im)^\s*([A-E])\s*[\)\.]\s+")
 ANSWER_ROW_PATTERN = re.compile(r"(?m)^\s*(\d{1,3})\s+([A-E])\s*$")
 
