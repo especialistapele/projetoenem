@@ -9,9 +9,12 @@ import hashlib, json, re, html
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 
 INEP_DOWNLOAD = "https://download.inep.gov.br/enem/provas_e_gabaritos"
 RIEP_COLLECTION = "https://riep.inep.gov.br/collections/22b39e5c-3238-4414-9faf-7db037247175"
+ALLOWED_PDF_HOSTS = {"download.inep.gov.br", "www.gov.br", "riep.inep.gov.br"}
+MAX_PDF_BYTES = 80 * 1024 * 1024
 
 COLORS = {1:"Azul",2:"Amarelo",3:"Branco",4:"Rosa",5:"Cinza"}
 
@@ -73,7 +76,7 @@ def discover_year_page(year:int, application:str="regular"):
 
 def discover(year_start:int, year_end:int, application:str="regular"):
     out=[]
-    for year in range(max(1998,year_start), min(2025,year_end)+1):
+    for year in range(max(1998,year_start), min(2026,year_end)+1):
         page_items=discover_year_page(year,application)
         if page_items:
             out.extend(page_items)
@@ -124,13 +127,25 @@ def download_pdf(item:dict, base_dir:Path):
     kind, special = classify_document(filename, str(item.get("label") or ""))
     if kind == "outro":
         raise ValueError("Arquivo não identificado como prova (PV) ou gabarito (GB).")
-    req=Request(item["source_url"], headers={"User-Agent":"ENEM-Predict/1.0"})
+    source_url=str(item["source_url"])
+    parsed=urlparse(source_url)
+    if parsed.scheme != "https" or (parsed.hostname or "").lower() not in ALLOWED_PDF_HOSTS:
+        raise ValueError("A origem do PDF deve ser HTTPS e pertencer a um domínio oficial do INEP/Gov.br/RIEP.")
+    req=Request(source_url, headers={"User-Agent":"ENEM-Predict/1.0"})
     raw=bytearray()
     with urlopen(req, timeout=90) as response:
+        final=urlparse(response.geturl())
+        if final.scheme != "https" or (final.hostname or "").lower() not in ALLOWED_PDF_HOSTS:
+            raise ValueError("O download foi redirecionado para um domínio não autorizado.")
+        content_length=response.headers.get("Content-Length")
+        if content_length and int(content_length) > MAX_PDF_BYTES:
+            raise ValueError("O PDF excede o limite de 80 MB.")
         while True:
             chunk=response.read(1024*1024)
             if not chunk: break
             raw.extend(chunk)
+            if len(raw) > MAX_PDF_BYTES:
+                raise ValueError("O PDF excede o limite de 80 MB.")
     valid, reason = validate_pdf_bytes(bytes(raw))
     if not valid:
         raise ValueError(reason)
