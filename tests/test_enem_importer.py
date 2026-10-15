@@ -38,7 +38,7 @@ class EnemImporterTests(unittest.TestCase):
         self.assertIn("PDF", reason)
 
     def test_rejects_tiny_pdf_payload(self):
-        valid, reason = validate_pdf_bytes(b"%PDF-1.7\\nsmall")
+        valid, reason = validate_pdf_bytes(b"%PDF-1.7\nsmall")
         self.assertFalse(valid)
         self.assertIn("pequeno", reason)
 
@@ -60,7 +60,7 @@ class EnemImporterTests(unittest.TestCase):
             root = Path(tmp)
             base_dir = root / "data" / "enem"
             url = "https://download.inep.gov.br/enem/provas_e_gabaritos/2025_PV_D1_CD1_Azul.pdf"
-            data = b"%PDF-1.7\\n" + (b"x" * 11000)
+            data = b"%PDF-1.7\n" + (b"x" * 11000)
             with patch("app.services.enem_importer.urlopen", return_value=FakeResponse(data, url)):
                 result = download_pdf({
                     "year": 2025,
@@ -160,11 +160,11 @@ class PdfParserCompletenessTests(unittest.TestCase):
             numbers.insert(1, 1)
         for number in numbers:
             blocks.append(
-                f"QUESTÃO {number} Enunciado da questão {number}\\n"
-                "A) Alternativa A\\nB) Alternativa B\\nC) Alternativa C\\n"
-                "D) Alternativa D\\nE) Alternativa E"
+                f"QUESTÃO {number} Enunciado da questão {number}\n"
+                "A) Alternativa A\nB) Alternativa B\nC) Alternativa C\n"
+                "D) Alternativa D\nE) Alternativa E"
             )
-        return "\\n".join(blocks)
+        return "\n".join(blocks)
 
     def test_parser_accepts_complete_booklet_with_inline_headers(self):
         text = self.make_exam(90)
