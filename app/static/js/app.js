@@ -175,7 +175,8 @@ async function parseSelected(){
 async function loadManifest(){
   try{
     const d=await api('/enem-import/manifest');
-    await loadImportQuota();\n    $('#importManifest').innerHTML=(d.items||[]).map(x=>`<div class="manifest-row"><div><strong>${esc(x.original_filename||x.filename)}</strong><span>${x.year} · dia ${x.day||'—'} · ${esc(x.color||'—')} · ${esc(x.document_type)} · ${esc(x.status||'')}</span></div><code>${esc(x.sha256||'')}</code><span>${((Number(x.file_size_bytes)||0)/1024/1024).toFixed(2)} MB${x.special_version?' · especial':''}</span></div>`).join('')||'<div class="empty">Nenhum arquivo baixado.</div>';
+    await loadImportQuota();
+    $('#importManifest').innerHTML=(d.items||[]).map(x=>`<div class="manifest-row"><div><strong>${esc(x.original_filename||x.filename)}</strong><span>${x.year} · dia ${x.day||'—'} · ${esc(x.color||'—')} · ${esc(x.document_type)} · ${esc(x.status||'')}</span></div><code>${esc(x.sha256||'')}</code><span>${((Number(x.file_size_bytes)||0)/1024/1024).toFixed(2)} MB${x.special_version?' · especial':''}</span></div>`).join('')||'<div class="empty">Nenhum arquivo baixado.</div>';
   }catch(e){$('#importManifest').innerHTML=`<div class="empty">${esc(e.message)}</div>`}
 }
 $('#discoverImports').onclick=discoverImports;
