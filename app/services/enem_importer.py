@@ -5,7 +5,7 @@ URLs diretas conhecidas; para anos anteriores, o sistema aponta o catálogo
 oficial do repositório RIEP para evitar adivinhar URLs.
 """
 from __future__ import annotations
-import hashlib, json, re, html, time, ssl
+import hashlib, json, re, html, time, ssl, os
 import certifi
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -22,7 +22,8 @@ COLORS = {1:"Azul",2:"Amarelo",3:"Branco",4:"Rosa",5:"Cinza"}
 
 def _urlopen_verified(request, timeout=30):
     """Open HTTPS with certificate verification against the maintained certifi CA bundle."""
-    context = ssl.create_default_context(cafile=certifi.where())
+    ca_bundle = os.environ.get("ENEM_CA_BUNDLE") or certifi.where()
+    context = ssl.create_default_context(cafile=ca_bundle)
     return urlopen(request, timeout=timeout, context=context)
 
 def candidate_2025():
@@ -43,6 +44,30 @@ def candidate_2025():
                     "official": True, "status": "candidate"
                 })
     return items
+
+def candidate_official_cycle():
+    """Cadernos regulares para três provas completas distintas: 2023, 2024 e 2025."""
+    items = []
+    for year in (2023, 2024):
+        for day, day_code, booklet, color in (
+            (1, "D1", 1, "Azul"),
+            (2, "D2", 5, "Amarelo"),
+        ):
+            for kind, prefix in (("caderno", "PV"), ("gabarito", "GB")):
+                url = f"{INEP_DOWNLOAD}/{year}_{prefix}_impresso_{day_code}_CD{booklet}.pdf"
+                items.append({
+                    "year": year, "application": "regular", "day": day,
+                    "color": color, "caderno": booklet, "document_type": kind,
+                    "filename": Path(url).name, "source_url": url,
+                    "official": True, "status": "candidate",
+                })
+    items.extend(
+        item for item in candidate_2025()
+        if (item["day"] == 1 and item["caderno"] == 1)
+        or (item["day"] == 2 and item["caderno"] == 7)
+    )
+    return items
+
 
 def check_url(url, timeout=8):
     try:

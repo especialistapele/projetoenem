@@ -347,11 +347,11 @@ window.renderActiveSimulation = () => {
     </div>
     <div class="question-card">
       <p>${esc(q.statement_text || '')}</p>
-      <div class="simulation-options">${(q.alternatives || []).map(a => `
+      ${q.is_annulled ? `<div class="note">Esta questão foi anulada oficialmente pelo INEP e não contará na pontuação.</div><button onclick="answerSimulation(${state.id},${q.question_id},'A')">Registrar e continuar</button>` : `<div class="simulation-options">${(q.alternatives || []).map(a => `
         <button class="answer-option ${selected === a.letter ? 'selected' : ''}" aria-pressed="${selected === a.letter ? 'true' : 'false'}"
           onclick="answerSimulation(${state.id},${q.question_id},'${a.letter}')">
           <strong>${a.letter})</strong> ${esc(a.text)}
-        </button>`).join('')}</div>
+        </button>`).join('')}</div>`}
     </div>
     <div class="simulation-nav">
       <button class="secondary" onclick="navigateSimulation(-1)" ${state.index === 0 ? 'disabled' : ''}>Anterior</button>
@@ -425,6 +425,7 @@ window.finishSimulation = async id => {
         <small>Resultado · ${esc(result.title || state.title)}</small>
         <h3>${result.correct} de ${result.answered} acertos</h3>
         <p>${Math.round((result.accuracy || 0) * 100)}% de aproveitamento</p>
+        ${result.annulled_questions ? `<p>${result.annulled_questions} questão(ões) anulada(s) pelo INEP não pontuadas.</p>` : ''}
         ${result.estimated_score != null ? `<p>Estimativa pedagógica: ${result.estimated_score}</p>` : ''}
         <p class="muted">${esc(result.score_note || 'Resultado baseado nas respostas registradas.')}</p>
         <div class="simulation-nav"><button onclick="loadSimulations()">Voltar aos simulados</button></div>

@@ -6,7 +6,8 @@ from app.supabase_auth import require_admin
 from app.database import SessionLocal
 from sqlalchemy import text
 from pydantic import BaseModel, Field
-from app.services.enem_importer import discover, download_pdf, write_manifest, classify_document, file_identity, validate_pdf_bytes
+from app.services.enem_importer import discover, download_pdf, write_manifest, classify_document, file_identity, validate_pdf_bytes, candidate_official_cycle
+from scripts.import_taxonomy import run_import as run_taxonomy_import
 from scripts.parse_pdf import parse_pdf
 from app.services.classifier import classify_question, official_area_for_question_number
 from scripts.import_dataset import run as import_dataset_run
@@ -29,6 +30,98 @@ class DiscoveryRequest(BaseModel):
 class ImportRequest(BaseModel):
     dataset_path: str = "data/enem/prepared_dataset.json"
     dry_run: bool = True
+
+class TaxonomyImportRequest(BaseModel):
+    dry_run: bool = True
+
+class OfficialCycleImportRequest(BaseModel):
+    dry_run: bool = True
+
+
+@router.post("/import-official-cycle")
+def import_official_cycle(payload: OfficialCycleImportRequest):
+    """Baixa e valida três provas completas oficiais distintas (2023–2025, 540 questões)."""
+    if SessionLocal is None:
+        raise HTTPException(503, "Banco não configurado.")
+    selected = candidate_official_cycle()
+    downloaded = []
+    parsed_files = []
+    parsed_paths = set()
+    try:
+        for item in selected:
+            record = download_pdf(item, BASE_DIR)
+            write_manifest(BASE_DIR, [record])
+            downloaded.append({
+                "filename": record.get("filename"),
+                "year": item["year"],
+                "day": item["day"],
+                "color": item["color"],
+                "document_type": item["document_type"],
+                "status": record.get("status"),
+            })
+            if record.get("status") == "duplicate":
+                storage_path = record["storage_path"]
+            else:
+                storage_path = record["storage_path"]
+            pdf_path = (BASE_DIR.parent.parent / storage_path).resolve()
+            kind = "gabarito" if item["document_type"] == "gabarito" else "caderno"
+            parsed = parse_pdf(str(pdf_path), kind)
+            parsed.update({
+                "year": item["year"],
+                "day": item["day"],
+                "color": item["color"],
+                "caderno": item["caderno"],
+                "document_type": kind,
+                "special_version": False,
+                "source_url": item["source_url"],
+            })
+            parsed_path = pdf_path.with_suffix(".parsed.json")
+            parsed_path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
+            parsed_paths.add(str(parsed_path.relative_to(BASE_DIR.parent.parent)))
+            parsed_files.append({
+                "filename": item["filename"],
+                "year": item["year"],
+                "day": item["day"],
+                "color": item["color"],
+                "document_type": kind,
+                "questions_found": parsed.get("questions_found", 0),
+                "answers_found": parsed.get("answers_found", 0),
+                "quality_status": (parsed.get("diagnostics") or {}).get("quality_status"),
+            })
+
+        prepared = prepare_dataset(only_paths=parsed_paths)
+        dataset_path = BASE_DIR / "prepared_dataset.json"
+        summary = import_dataset_run(str(dataset_path), dry_run=payload.dry_run)
+        return {
+            "status": "dry_run" if payload.dry_run else "imported",
+            "source": "INEP 2023–2025 — três provas regulares completas (540 questões esperadas)",
+            "downloaded": downloaded,
+            "parsed": parsed_files,
+            "prepared": {
+                "groups": prepared.get("groups", 0),
+                "questions": prepared.get("questions", 0),
+                "questions_with_answer": prepared.get("questions_with_answer", 0),
+                "questions_without_answer": prepared.get("questions_without_answer", 0),
+                "questions_unclassified": prepared.get("questions_unclassified", 0),
+                "group_status": prepared.get("groups"),
+            },
+            "import_summary": summary,
+        }
+    except Exception as exc:
+        raise HTTPException(422, f"Falha no fluxo oficial de importação ENEM 2023–2025: {exc}")
+
+
+@router.post("/taxonomy")
+def import_official_taxonomy(payload: TaxonomyImportRequest):
+    """Extrai e valida a Matriz oficial do INEP; por padrão não grava alterações."""
+    if SessionLocal is None:
+        raise HTTPException(503, "Banco não configurado.")
+    try:
+        with SessionLocal() as db:
+            return run_taxonomy_import(db, dry_run=payload.dry_run)
+    except Exception as exc:
+        raise HTTPException(422, f"Falha na importação da taxonomia oficial: {exc}")
+
 
 @router.post("/discover")
 def discover_files(payload:DiscoveryRequest):
@@ -143,9 +236,12 @@ def _metadata_from_path(path: Path, data: dict):
 
 
 @router.post("/prepare")
-def prepare_dataset():
-    """Consolida cadernos + gabaritos parseados em um JSON pronto para revisão/importação."""
+def prepare_dataset(only_paths: set[str] | None = None):
+    """Consolida cadernos + gabaritos parseados; opcionalmente limita a um lote específico."""
     files = list(BASE_DIR.rglob("*.parsed.json")) if BASE_DIR.exists() else []
+    if only_paths is not None:
+        root = BASE_DIR.parent.parent
+        files = [path for path in files if str(path.relative_to(root)) in only_paths]
     notebooks = {}
     keys = {}
     for path in files:
@@ -188,18 +284,21 @@ def prepare_dataset():
             if not cls.get("area") or not cls.get("subject"):
                 group["unclassified_questions"] += 1
             answer = answers.get(str(number), answers.get(number))
+            is_annulled = str(answer or "").strip().upper() == "ANULADO"
             alts = []
             for alt in q.get("alternatives", []) or []:
                 a = dict(alt)
-                a["is_correct"] = bool(answer and a.get("letter", "").upper() == str(answer).upper())
+                a["is_correct"] = bool(answer and not is_annulled and a.get("letter", "").upper() == str(answer).upper())
                 alts.append(a)
-            if answer and sum(1 for alt in alts if alt["is_correct"]) == 1:
+            if answer and (is_annulled or sum(1 for alt in alts if alt["is_correct"]) == 1):
                 group["matched_answers"] += 1
+            subject_name = cls.get("subject") or ("Classificação pendente" if official_area else None)
             questions.append({
                 "exam": {"year": year, "edition": "regular", "color": str(color_code or "azul").lower(), "day": day},
                 "number": number,
+                "is_annulled": is_annulled,
                 "area": cls.get("area"),
-                "subject": cls.get("subject"),
+                "subject": subject_name,
                 "statement_text": text,
                 "alternatives": alts,
                 "topics": [],
@@ -216,9 +315,9 @@ def prepare_dataset():
                "questions": questions,
                "groups": groups,
                "diagnostics": {"groups": len(groups), "questions": len(questions),
-                               "questions_with_answer": sum(1 for q in questions if any(a.get("is_correct") for a in q["alternatives"])),
-                               "questions_without_answer": sum(1 for q in questions if not any(a.get("is_correct") for a in q["alternatives"])),
-                               "questions_unclassified": sum(1 for q in questions if not q.get("area") or not q.get("subject"))}}
+                               "questions_with_answer": sum(1 for q in questions if q.get("is_annulled") or any(a.get("is_correct") for a in q["alternatives"])),
+                               "questions_without_answer": sum(1 for q in questions if not q.get("is_annulled") and not any(a.get("is_correct") for a in q["alternatives"])),
+                               "questions_unclassified": sum(1 for q in questions if not q.get("area") or not (q.get("classification") or {}).get("subject"))}}
     out = BASE_DIR / "prepared_dataset.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"status": "prepared", "path": str(out.relative_to(BASE_DIR.parent.parent)), **payload["diagnostics"], "groups": groups}
