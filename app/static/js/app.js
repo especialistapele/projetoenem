@@ -240,7 +240,25 @@ async function runOfficialCycle(dryRun){
   try{
     const result=await api('/enem-import/import-official-cycle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:dryRun})});
     showOfficialCycleReport(result,dryRun);
-    if(!dryRun){commit.disabled=true;await loadQuestionStats();await loadTopics();if(typeof loadSimulations==='function')await loadSimulations();}
+    if(!dryRun){
+      commit.disabled=true;await loadQuestionStats();await loadTopics();
+      const cycleYear=new Date().getFullYear();
+      const sims=(await api('/learning/simulations')).filter(s=>Number(s.cycle_year)===cycleYear).sort((a,b)=>Number(a.sequence)-Number(b.sequence));
+      const generated=[];
+      for(const sim of sims){
+        try{
+          const result=sim.status==='ready'
+            ? {status:'already_generated',questions:sim.generated_question_count}
+            : await api('/learning/simulations/'+sim.id+'/generate',{method:'POST'});
+          generated.push({sequence:sim.sequence,status:result.status,questions:result.questions||sim.question_count});
+        }catch(e){generated.push({sequence:sim.sequence,status:'error',message:e.message});}
+      }
+      if(generated.length){
+        const html=generated.map(g=>'<span>Simulado '+g.sequence+': '+esc(g.status)+(g.questions?' · '+g.questions+' questões':'')+(g.message?' · '+esc(g.message):'')+'</span>').join('');
+        $('#officialCycleReport').insertAdjacentHTML('afterbegin','<div class="backtest-metrics">'+html+'</div>');
+      }
+      if(typeof loadSimulations==='function')await loadSimulations();
+    }
   }catch(e){box.innerHTML=`<div class="empty">Falha na validação/importação: ${esc(e.message)}. Nenhuma importação deve ser considerada concluída.</div>`;commit.disabled=true;}
   finally{verify.disabled=false;verify.textContent='🔎 Validar ciclo 2023–2025';}
 }
