@@ -206,7 +206,7 @@ def simulation_questions(simulation_id:int, user=Depends(get_current_supabase_us
           .join(Question, Question.id==SimulationQuestion.question_id)
           .filter(SimulationQuestion.simulation_id==simulation_id)
           .order_by(SimulationQuestion.position).all())
-    return [{"position":a.position,"question_id":q.id,"number":q.number,"statement_text":q.statement_text,"alternatives":[{"letter":x.letter,"text":x.text} for x in q.alternatives]} for a,q in rows]
+    return [{"position":a.position,"question_id":q.id,"number":q.number,"statement_text":q.statement_text,"is_annulled":bool(q.is_annulled),"alternatives":[{"letter":x.letter,"text":x.text} for x in q.alternatives]} for a,q in rows]
 
 class SimulationAnswerIn(BaseModel):
     question_id:int
@@ -221,33 +221,36 @@ def simulation_answer(simulation_id:int,payload:SimulationAnswerIn,user=Depends(
     if not q: raise HTTPException(404,"Questão não encontrada")
     letter=payload.selected_letter.upper()
     if not any(x.letter.upper()==letter for x in q.alternatives): raise HTTPException(422,"Alternativa inválida para esta questão")
-    correct=next((x.is_correct for x in q.alternatives if x.letter.upper()==letter),False)
+    correct=False if q.is_annulled else next((x.is_correct for x in q.alternatives if x.letter.upper()==letter),False)
     a=db.query(SimulationAttempt).filter_by(simulation_id=simulation_id,question_id=payload.question_id,user_id=uid(user)).first()
     if not a:
         a=SimulationAttempt(simulation_id=simulation_id,question_id=payload.question_id,position=membership.position,user_id=uid(user))
         db.add(a)
     a.selected_letter=letter;a.is_correct=bool(correct);a.seconds_spent=payload.seconds_spent;a.answered_at=datetime.now(timezone.utc)
-    db.commit();return {"is_correct":bool(correct)}
+    db.commit();return {"is_correct":None if q.is_annulled else bool(correct),"is_annulled":bool(q.is_annulled)}
 
 @router.get("/simulations/{simulation_id}/result")
 def simulation_result(simulation_id:int,user=Depends(get_current_supabase_user),db:Session=Depends(get_db)):
     s=db.query(Simulation).filter_by(id=simulation_id).first()
     if not s: raise HTTPException(404,"Simulado não encontrado")
-    rows=db.query(SimulationAttempt).filter_by(simulation_id=simulation_id,user_id=uid(user)).all()
+    rows=(db.query(SimulationAttempt).join(Question, Question.id==SimulationAttempt.question_id)
+          .filter(SimulationAttempt.simulation_id==simulation_id, SimulationAttempt.user_id==uid(user), Question.is_annulled.is_(False)).all())
     total=len(rows);correct=sum(bool(x.is_correct) for x in rows)
+    annulled_count=(db.query(SimulationQuestion).join(Question, Question.id==SimulationQuestion.question_id)
+                    .filter(SimulationQuestion.simulation_id==simulation_id, Question.is_annulled.is_(True)).count())
     area_rows=db.execute(text("""SELECT ka.id, ka.name, COUNT(sa.id) total, COUNT(sa.id) FILTER (WHERE sa.is_correct) correct
       FROM simulation_attempts sa JOIN questions q ON q.id=sa.question_id JOIN subjects su ON su.id=q.subject_id JOIN knowledge_areas ka ON ka.id=su.knowledge_area_id
-      WHERE sa.simulation_id=:sid AND sa.user_id=:uid GROUP BY ka.id,ka.name ORDER BY ka.id"""),{"sid":simulation_id,"uid":uid(user)}).fetchall()
+      WHERE sa.simulation_id=:sid AND sa.user_id=:uid AND q.is_annulled = FALSE GROUP BY ka.id,ka.name ORDER BY ka.id"""),{"sid":simulation_id,"uid":uid(user)}).fetchall()
     breakdown=[{"area_id":r[0],"area":r[1],"total":r[2],"correct":r[3],"accuracy":(r[3]/r[2]) if r[2] else 0} for r in area_rows]
     comp_rows=db.execute(text("""SELECT c.code,c.name,COUNT(sa.id) total,COUNT(sa.id) FILTER (WHERE sa.is_correct) correct
       FROM simulation_attempts sa JOIN questions q ON q.id=sa.question_id JOIN competencies c ON c.id=q.taxonomy_competency_id
-      WHERE sa.simulation_id=:sid AND sa.user_id=:uid GROUP BY c.code,c.name ORDER BY c.code"""),{"sid":simulation_id,"uid":uid(user)}).fetchall()
+      WHERE sa.simulation_id=:sid AND sa.user_id=:uid AND q.is_annulled = FALSE GROUP BY c.code,c.name ORDER BY c.code"""),{"sid":simulation_id,"uid":uid(user)}).fetchall()
     competencies=[{"code":r[0],"name":r[1],"total":r[2],"correct":r[3],"accuracy":(r[3]/r[2]) if r[2] else 0} for r in comp_rows]
     # TRI 3PL estimativa por área, usando parâmetros estimados quando disponíveis.
     tri_rows=db.execute(text("""SELECT ka.id area_id,ka.name area_name,sa.is_correct,
       COALESCE(tp.discrimination_a,1.0) a,COALESCE(tp.difficulty_b,COALESCE(q.difficulty_estimate,0)) b,COALESCE(tp.guessing_c,0.20) c
       FROM simulation_attempts sa JOIN questions q ON q.id=sa.question_id JOIN subjects su ON su.id=q.subject_id JOIN knowledge_areas ka ON ka.id=su.knowledge_area_id
-      LEFT JOIN item_tri_parameters tp ON tp.question_id=q.id WHERE sa.simulation_id=:sid AND sa.user_id=:uid"""),{"sid":simulation_id,"uid":uid(user)}).mappings().all()
+      LEFT JOIN item_tri_parameters tp ON tp.question_id=q.id WHERE sa.simulation_id=:sid AND sa.user_id=:uid AND q.is_annulled = FALSE"""),{"sid":simulation_id,"uid":uid(user)}).mappings().all()
     from app.services.tri_estimator import _p
     tri_areas=[]
     for area_id,items in __import__('itertools').groupby(sorted(tri_rows,key=lambda x:x['area_id']),key=lambda x:x['area_id']):
@@ -262,7 +265,7 @@ def simulation_result(simulation_id:int,user=Depends(get_current_supabase_user),
             if abs(step)<1e-4:break
         tri_areas.append({"area_id":area_id,"area_name":items[0]['area_name'],"theta":round(theta,4),"estimated_score":round(max(200,min(900,500+theta*100)),1),"item_count":len(items)})
     estimated_score=round(sum(x['estimated_score'] for x in tri_areas)/len(tri_areas),1) if tri_areas else None
-    return {"simulation_id":simulation_id,"title":s.title,"answered":total,"correct":correct,"accuracy":(correct/total if total else 0),"estimated_score":estimated_score,"score_note":"TRI 3PL estimativa pedagógica; não é a nota oficial TRI do ENEM.","areas":breakdown,"tri_areas":tri_areas,"competencies":competencies}
+    return {"simulation_id":simulation_id,"title":s.title,"answered":total,"correct":correct,"accuracy":(correct/total if total else 0),"estimated_score":estimated_score,"annulled_questions":annulled_count,"score_note":"TRI 3PL estimativa pedagógica; não é a nota oficial TRI do ENEM. Questões anuladas pelo INEP não entram na pontuação.","areas":breakdown,"tri_areas":tri_areas,"competencies":competencies}
 
 @router.get("/dashboard/history")
 def dashboard_history(user=Depends(get_current_supabase_user),db:Session=Depends(get_db)):
