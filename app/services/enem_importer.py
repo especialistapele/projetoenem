@@ -19,17 +19,21 @@ MAX_PDF_BYTES = 80 * 1024 * 1024
 COLORS = {1:"Azul",2:"Amarelo",3:"Branco",4:"Rosa",5:"Cinza"}
 
 def candidate_2025():
-    items=[]
-    # Regular printed: CD1..CD5, both days. URLs are tested with HEAD/GET.
-    for day in (1,2):
-        for cd,color in COLORS.items():
-            for kind,prefix in (("caderno","PV"),("gabarito","GB")):
-                url=f"{INEP_DOWNLOAD}/2025_{prefix}_impresso_D{day}_CD{cd}.pdf"
+    items = []
+    # Official regular cadernos for 2025: D1 identifies day 1; D6 identifies day 2.
+    books_by_day = (
+        (1, "D1", {1: "Azul", 2: "Amarelo", 3: "Branco", 4: "Verde"}),
+        (2, "D6", {5: "Amarelo", 6: "Cinza", 7: "Azul", 8: "Verde"}),
+    )
+    for day, day_code, books in books_by_day:
+        for cd, color in books.items():
+            for kind, prefix in (("caderno", "PV"), ("gabarito", "GB")):
+                url = f"{INEP_DOWNLOAD}/2025_{prefix}_impresso_{day_code}_CD{cd}.pdf"
                 items.append({
-                    "year":2025,"application":"regular","day":day,
-                    "color":color,"document_type":kind,
-                    "filename":Path(url).name,"source_url":url,
-                    "official":True,"status":"candidate"
+                    "year": 2025, "application": "regular", "day": day,
+                    "color": color, "caderno": cd, "document_type": kind,
+                    "filename": Path(url).name, "source_url": url,
+                    "official": True, "status": "candidate"
                 })
     return items
 
