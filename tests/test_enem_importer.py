@@ -136,6 +136,22 @@ class EnemImporterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "caderno incompleto"):
             validate_dataset(payload)
 
+    def test_dataset_accepts_official_day_two_numbering(self):
+        alternatives = [
+            {"letter": "A", "text": "A", "is_correct": True},
+            {"letter": "B", "text": "B", "is_correct": False},
+            {"letter": "C", "text": "C", "is_correct": False},
+            {"letter": "D", "text": "D", "is_correct": False},
+            {"letter": "E", "text": "E", "is_correct": False},
+        ]
+        exam = {"year": 2025, "edition": "regular", "color": "azul", "day": 2}
+        payload = {"questions": [
+            {"exam": exam, "number": number, "statement_text": f"Questão {number}",
+             "area": "Ciências da Natureza", "subject": "Biologia", "alternatives": alternatives}
+            for number in range(91, 181)
+        ]}
+        self.assertEqual(validate_dataset(payload), 90)
+
     def test_dataset_rejects_question_without_exactly_one_answer(self):
         payload = {"questions": [{
             "statement_text": "Enunciado de teste",
@@ -153,11 +169,11 @@ class EnemImporterTests(unittest.TestCase):
 
 class PdfParserCompletenessTests(unittest.TestCase):
     @staticmethod
-    def make_exam(count=90, duplicate_first=False):
+    def make_exam(count=90, duplicate_first=False, start=1):
         blocks = []
-        numbers = list(range(1, count + 1))
+        numbers = list(range(start, start + count))
         if duplicate_first:
-            numbers.insert(1, 1)
+            numbers.insert(1, start)
         for number in numbers:
             blocks.append(
                 f"QUESTÃO {number} Enunciado da questão {number}\n"
@@ -174,6 +190,15 @@ class PdfParserCompletenessTests(unittest.TestCase):
         self.assertEqual(result["questions"][0]["statement_text"], "Enunciado da questão 1")
         self.assertEqual(result["diagnostics"]["quality_status"], "ready")
         self.assertTrue(result["diagnostics"]["complete_numbering"])
+
+    def test_parser_accepts_day_two_question_numbers_91_to_180(self):
+        text = self.make_exam(90, start=91)
+        with patch("scripts.parse_pdf.extract_raw_pages", return_value=[text]):
+            result = parse_pdf("2025_PV_D2_CD1_Azul.pdf")
+        self.assertEqual(result["questions_found"], 90)
+        self.assertEqual(result["questions"][0]["number"], 91)
+        self.assertEqual(result["questions"][-1]["number"], 180)
+        self.assertEqual(result["diagnostics"]["quality_status"], "ready")
 
     def test_parser_marks_incomplete_booklet_for_review(self):
         text = self.make_exam(89)
