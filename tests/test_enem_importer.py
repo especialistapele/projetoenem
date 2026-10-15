@@ -118,6 +118,23 @@ class EnemImporterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicadas"):
             validate_dataset(payload)
 
+    def test_dataset_rejects_incomplete_exam_caderno(self):
+        alternatives = [
+            {"letter": "A", "text": "A", "is_correct": True},
+            {"letter": "B", "text": "B", "is_correct": False},
+            {"letter": "C", "text": "C", "is_correct": False},
+            {"letter": "D", "text": "D", "is_correct": False},
+            {"letter": "E", "text": "E", "is_correct": False},
+        ]
+        exam = {"year": 2024, "edition": "regular", "color": "azul", "day": 1}
+        payload = {"questions": [
+            {"exam": exam, "number": number, "statement_text": f"Questão {number}",
+             "area": "Matemática", "subject": "Matemática", "alternatives": alternatives}
+            for number in range(1, 90)
+        ]}
+        with self.assertRaisesRegex(ValueError, "caderno incompleto"):
+            validate_dataset(payload)
+
     def test_dataset_rejects_question_without_exactly_one_answer(self):
         payload = {"questions": [{
             "statement_text": "Enunciado de teste",

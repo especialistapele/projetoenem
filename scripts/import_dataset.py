@@ -77,6 +77,28 @@ def validate_dataset(payload):
             raise ValueError(f"Questão {index}: esperado exatamente um gabarito correto; encontrado {correct_count}.")
         if len(alternatives) != 5 or set(letters) != {"A", "B", "C", "D", "E"}:
             raise ValueError(f"Questão {index}: esperado o conjunto completo de cinco alternativas A–E; encontrado {len(alternatives)}.")
+    # A prova regular do ENEM tem 90 questões por caderno/dia. Quando o lote
+    # inclui metadados de prova, não permita importar silenciosamente um caderno parcial.
+    groups = {}
+    for index, item in enumerate(questions, start=1):
+        exam = item.get("exam")
+        if not isinstance(exam, dict):
+            continue
+        required = ("year", "edition", "color", "day")
+        if not all(exam.get(key) is not None for key in required):
+            raise ValueError(f"Questão {index}: metadados incompletos da prova.")
+        key = (exam["year"], exam["edition"], exam["color"], exam["day"])
+        groups.setdefault(key, []).append(item)
+
+    for key, items in groups.items():
+        numbers = [item.get("number") for item in items]
+        if len(numbers) != len(set(numbers)):
+            raise ValueError(f"Prova {key}: existem números de questão duplicados.")
+        if len(items) != 90 or set(numbers) != set(range(1, 91)):
+            raise ValueError(
+                f"Prova {key}: caderno incompleto; esperado questões 1–90 (90 itens), "
+                f"encontrados {len(items)}."
+            )
     return len(questions)
 
 
