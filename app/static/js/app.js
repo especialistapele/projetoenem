@@ -231,7 +231,7 @@ function showOfficialCycleReport(result, canCommit){
     </div>
     ${groups.map(g=>`<div class="manifest-row"><div><strong>${g.year} · dia ${g.day} · ${esc(g.color||'—')}</strong><span>${g.questions} questões · ${g.matched_answers} respostas vinculadas · ${g.unclassified_questions||0} classificações pendentes</span></div><span>${esc(g.status)}</span></div>`).join('')}
     ${(result.parsed||[]).map(f=>`<div class="manifest-row"><div><strong>${esc(f.filename)}</strong><span>${f.year} · dia ${f.day} · ${esc(f.document_type)}</span></div><span>${f.questions_found||f.answers_found||0} itens · ${esc(f.quality_status||'gabarito extraído')}</span></div>`).join('')}
-    ${valid ? '<p class="note">Estrutura validada. Questões com disciplina incerta permanecem marcadas para revisão, mas a área oficial está preservada.</p>' : '<p class="note">Não é possível gravar: revise os cadernos, gabaritos ou a quantidade de questões.</p>'}
+    ${valid ? (result.status==='imported' ? '<p class="note">Importação gravada no banco. Questões com disciplina incerta continuam marcadas para revisão.</p>' : '<p class="note">Estrutura validada. Questões com disciplina incerta permanecem marcadas para revisão, mas a área oficial está preservada.</p>') : '<p class="note">Não é possível gravar: revise os cadernos, gabaritos ou a quantidade de questões.</p>'}
   `;
 }
 async function runOfficialCycle(dryRun){
@@ -258,7 +258,7 @@ async function runOfficialTaxonomy(dryRun){
     box.innerHTML=`<div class="backtest-metrics"><span>Status ${esc(result.status||'validado')}</span><span>Áreas 4</span><span>Competências ${d.competencies||0}/30</span><span>Habilidades ${d.skills||0}/120</span></div>
       <div class="manifest-row"><div><strong>Competências</strong><span>${counts.competencies_created||0} novas · ${counts.competencies_updated||0} atualizadas</span></div><span>${valid?'Validadas':'Revisar'}</span></div>
       <div class="manifest-row"><div><strong>Habilidades</strong><span>${counts.skills_created||0} novas · ${counts.skills_updated||0} atualizadas</span></div><span>${valid?'Validadas':'Revisar'}</span></div>
-      <p class="note">${valid?'Matriz validada; nenhuma alteração foi gravada nesta etapa.':'A matriz não atingiu os totais oficiais esperados e não pode ser gravada.'}</p>`;
+      <p class="note">${valid?(dryRun?'Matriz validada; nenhuma alteração foi gravada nesta etapa.':'Taxonomia oficial gravada no banco.'): 'A matriz não atingiu os totais oficiais esperados e não pode ser gravada.'}</p>`;
     if(!dryRun&&valid){commit.disabled=true;}
   }catch(e){box.innerHTML=`<div class="empty">Falha ao obter ou validar a matriz oficial: ${esc(e.message)}. A taxonomia não foi marcada como concluída.</div>`;commit.disabled=true;}
   finally{verify.disabled=false;verify.textContent='🔎 Validar matriz oficial';}
