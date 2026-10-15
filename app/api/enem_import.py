@@ -26,6 +26,10 @@ def storage_quota():
 class DiscoveryRequest(BaseModel):
     year_start:int=Field(2025,ge=1998,le=2026); year_end:int=Field(2026,ge=1998,le=2026); application:str="regular"
 
+class ImportRequest(BaseModel):
+    dataset_path: str = "data/enem/prepared_dataset.json"
+    dry_run: bool = True
+
 @router.post("/discover")
 def discover_files(payload:DiscoveryRequest):
     if payload.year_start>payload.year_end: raise HTTPException(400,"Ano inicial não pode ser maior que o final.")
@@ -208,16 +212,16 @@ def prepare_dataset():
 
 
 @router.post("/import")
-def import_prepared(payload: dict):
+def import_prepared(payload: ImportRequest):
     """Importa o lote preparado; por padrão executa dry-run para segurança."""
-    rel = payload.get("dataset_path", "data/enem/prepared_dataset.json")
+    rel = payload.dataset_path
     path = (BASE_DIR.parent.parent / rel).resolve()
     if BASE_DIR.resolve() not in path.parents or not path.exists():
         raise HTTPException(400, "Dataset preparado não encontrado no staging.")
-    dry_run = bool(payload.get("dry_run", True))
+    dry_run = payload.dry_run
     try:
-        import_dataset_run(str(path), dry_run=dry_run)
-        return {"status": "dry_run" if dry_run else "imported", "dataset_path": rel}
+        summary = import_dataset_run(str(path), dry_run=dry_run)
+        return {"status": "dry_run" if dry_run else "imported", "dataset_path": rel, "summary": summary}
     except Exception as exc:
         raise HTTPException(422, f"Falha na importação: {exc}")
 
