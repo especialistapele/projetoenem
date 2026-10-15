@@ -91,10 +91,12 @@ def generate_simulation(simulation_id:int,user=Depends(require_admin),db:Session
     if not s: raise HTTPException(404,"Simulado não encontrado")
     if db.query(SimulationQuestion).filter_by(simulation_id=simulation_id).count(): return {"status":"already_generated"}
     # Balanced ENEM-like selection by four knowledge areas when enough classified questions exist.
-    areas=db.query(KnowledgeArea).order_by(KnowledgeArea.id).all()
+    areas=db.query(KnowledgeArea).filter(KnowledgeArea.code.in_(["LC","CH","CN","MT"])).order_by(KnowledgeArea.id).all()
+    if len(areas) < 4:
+        areas=db.query(KnowledgeArea).order_by(KnowledgeArea.id).limit(4).all()
     selected=[]
-    for area in areas[:4]:
-        ids=[r[0] for r in db.query(Question.id).join(Subject, Question.subject_id==Subject.id).filter(Subject.knowledge_area_id==area.id).order_by(Question.id).limit(45).all()]
+    for area in areas:
+        ids=[r[0] for r in db.query(Question.id).join(Subject, Question.subject_id==Subject.id).join(Alternative, Alternative.question_id==Question.id).filter(Subject.knowledge_area_id==area.id).group_by(Question.id).having(func.count(Alternative.id)>=2, func.count(Alternative.id).filter(Alternative.is_correct.is_(True))==1).order_by(Question.id).limit(45).all()]
         selected.extend(ids)
     selected=list(dict.fromkeys(selected))[:min(180, s.question_count)]
     if len(selected)<s.question_count:
