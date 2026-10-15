@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
-from app.models import Exam, Question, Alternative, QuestionAttempt, StudentTopicPerformance, Topic, QuestionTopic, KnowledgeArea, Program, Simulation, SimulationQuestion, SimulationAttempt, EssaySubmission, EssayReview, Subject
+from app.models import Exam, Question, Alternative, QuestionAttempt, StudentTopicPerformance, Topic, QuestionTopic, KnowledgeArea, Program, TopicYearFrequency, Simulation, SimulationQuestion, SimulationAttempt, EssaySubmission, EssayReview, Subject
 from app.supabase_auth import get_current_supabase_user, require_admin
 from app.services.tri_estimator import estimate
 
