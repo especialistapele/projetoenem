@@ -2,6 +2,8 @@ name: Verify official ENEM sources
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["repair/refresh-certifi-inep-tls"]
 
 jobs:
   verify-official-sources:
