@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.error import URLError
 from unittest.mock import patch
 
-from app.services.enem_importer import download_pdf, validate_pdf_bytes, _urlopen_verified
+from app.services.enem_importer import download_pdf, validate_pdf_bytes, _urlopen_verified, check_url
 from scripts.import_dataset import normalize_area, validate_dataset
 from scripts.parse_pdf import infer_metadata, parse_pdf, parse_answer_key
 from app.services.enem_importer import candidate_2025, candidate_official_cycle
@@ -44,6 +44,16 @@ class EnemImporterTests(unittest.TestCase):
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assertTrue(context.check_hostname)
         self.assertEqual(mocked.call_args.kwargs["timeout"], 7)
+
+    def test_check_url_fallback_keeps_custom_verified_tls_context(self):
+        class HeadRejectedResponse(FakeResponse):
+            status = 200
+
+        response = HeadRejectedResponse(b"ok", "https://download.inep.gov.br/test.pdf")
+        with patch("app.services.enem_importer._urlopen_verified", side_effect=[URLError("HEAD not supported"), response]) as verified, patch("app.services.enem_importer.urlopen") as unverified:
+            self.assertTrue(check_url("https://download.inep.gov.br/test.pdf"))
+        self.assertEqual(verified.call_count, 2)
+        unverified.assert_not_called()
 
     def test_rejects_non_pdf_payload(self):
         valid, reason = validate_pdf_bytes(b"not a pdf" * 2000)
