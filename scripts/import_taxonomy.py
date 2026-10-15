@@ -31,13 +31,13 @@ AREA_HEADERS = (
 )
 EXPECTED_COMPETENCIES = {"LC": 9, "CH": 6, "CN": 8, "MT": 7}
 EXPECTED_SKILLS_PER_AREA = 30
-COMPETENCY_RE = re.compile(r"Competência\\s+de\\s+área\\s*(\\d+)\\s*(?:[-–—:]\\s*)?", re.I)
-SKILL_RE = re.compile(r"(?<![A-Za-z])H\\s*(\\d{1,2})\\s*[–—-]\\s*", re.I)
+COMPETENCY_RE = re.compile(r"Competência\s+de\s+área\s*(\d+)\s*(?:[-–—:]\s*)?", re.I)
+SKILL_RE = re.compile(r"(?<![A-Za-z])H\s*(\d{1,2})\s*[–—-]\s*", re.I)
 
 
 def _clean(value: str) -> str:
-    value = re.sub(r"\\s+", " ", value or "")
-    return value.strip(" \\t\\r\\n-–—:;.")
+    value = re.sub(r"\s+", " ", value or "")
+    return value.strip(" \t\r\n-–—:;.")
 
 
 def extract_matrix_text(pdf_bytes: bytes) -> str:
@@ -48,7 +48,7 @@ def extract_matrix_text(pdf_bytes: bytes) -> str:
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
             pages.append(page.extract_text() or "")
-    text = "\\n".join(pages)
+    text = "\n".join(pages)
     if len(text.strip()) < 5000:
         raise ValueError("O PDF oficial não forneceu texto suficiente para extrair a matriz.")
     return text
@@ -56,10 +56,10 @@ def extract_matrix_text(pdf_bytes: bytes) -> str:
 
 def _area_sections(text: str) -> dict[str, str]:
     patterns = {
-        "LC": re.compile(r"(?im)^\\s*(?:Matriz de Referência de\\s+)?Linguagens,\\s*Códigos e suas Tecnologias\\s*$"),
-        "CH": re.compile(r"(?im)^\\s*(?:Matriz de Referência de\\s+)?Ciências Humanas e suas Tecnologias\\s*$"),
-        "CN": re.compile(r"(?im)^\\s*(?:Matriz de Referência de\\s+)?Ciências da Natureza e suas Tecnologias\\s*$"),
-        "MT": re.compile(r"(?im)^\\s*(?:Matriz de Referência de\\s+)?Matemática e suas Tecnologias\\s*$"),
+        "LC": re.compile(r"(?im)^\s*(?:Matriz de Referência de\s+)?Linguagens,\s*Códigos e suas Tecnologias\s*$"),
+        "CH": re.compile(r"(?im)^\s*(?:Matriz de Referência de\s+)?Ciências Humanas e suas Tecnologias\s*$"),
+        "CN": re.compile(r"(?im)^\s*(?:Matriz de Referência de\s+)?Ciências da Natureza e suas Tecnologias\s*$"),
+        "MT": re.compile(r"(?im)^\s*(?:Matriz de Referência de\s+)?Matemática e suas Tecnologias\s*$"),
     }
     matches = []
     for code, pattern in patterns.items():
@@ -75,7 +75,7 @@ def _area_sections(text: str) -> dict[str, str]:
         cursor = end
     if current is not None:
         sections[current].append(text[cursor:])
-    return {code: "\\n".join(chunks) for code, chunks in sections.items()}
+    return {code: "\n".join(chunks) for code, chunks in sections.items()}
 
 
 def parse_matrix_text(text: str) -> dict[str, Any]:
