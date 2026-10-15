@@ -10,7 +10,7 @@ from scripts.import_dataset import normalize_area, validate_dataset
 from scripts.parse_pdf import infer_metadata, parse_pdf
 from app.services.enem_importer import candidate_2025
 from app.services.classifier import official_area_for_question_number
-from app.api.learning import simulation_readiness_status
+from app.api.learning import simulation_readiness_status, simulation_exam_year
 
 
 class FakeResponse:
@@ -54,6 +54,11 @@ class EnemImporterTests(unittest.TestCase):
         valid, reason = validate_pdf_bytes(b"%PDF-1.7\nsmall")
         self.assertFalse(valid)
         self.assertIn("pequeno", reason)
+
+    def test_simulations_map_to_three_distinct_official_exam_years(self):
+        self.assertEqual(simulation_exam_year(2026, 1), 2025)
+        self.assertEqual(simulation_exam_year(2026, 2), 2024)
+        self.assertEqual(simulation_exam_year(2026, 3), 2023)
 
     def test_simulation_readiness_status_never_marks_partial_selection_ready(self):
         self.assertEqual(simulation_readiness_status(180, 0), "not_generated")
