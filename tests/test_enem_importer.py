@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from app.services.enem_importer import download_pdf, validate_pdf_bytes, _urlopen_verified
 from scripts.import_dataset import normalize_area, validate_dataset
-from scripts.parse_pdf import infer_metadata, parse_pdf
+from scripts.parse_pdf import infer_metadata, parse_pdf, parse_answer_key
 from app.services.enem_importer import candidate_2025
 from app.services.classifier import official_area_for_question_number
 from app.api.learning import simulation_readiness_status, simulation_exam_year
@@ -49,6 +49,28 @@ class EnemImporterTests(unittest.TestCase):
         valid, reason = validate_pdf_bytes(b"not a pdf" * 2000)
         self.assertFalse(valid)
         self.assertIn("PDF", reason)
+
+    def test_answer_key_preserves_official_annulled_questions(self):
+        answers = parse_answer_key("91 A\\n92 Anulado\\n93 C")
+        self.assertEqual(answers[91], "A")
+        self.assertEqual(answers[92], "ANULADO")
+        self.assertEqual(answers[93], "C")
+
+    def test_dataset_accepts_annulled_question_without_fake_correct_option(self):
+        payload = {"questions": [{
+            "statement_text": "Questão anulada oficialmente",
+            "area": "Matemática",
+            "subject": "Matemática",
+            "is_annulled": True,
+            "alternatives": [
+                {"letter": "A", "text": "A", "is_correct": False},
+                {"letter": "B", "text": "B", "is_correct": False},
+                {"letter": "C", "text": "C", "is_correct": False},
+                {"letter": "D", "text": "D", "is_correct": False},
+                {"letter": "E", "text": "E", "is_correct": False},
+            ],
+        }]}
+        self.assertEqual(validate_dataset(payload), 1)
 
     def test_rejects_tiny_pdf_payload(self):
         valid, reason = validate_pdf_bytes(b"%PDF-1.7\nsmall")
