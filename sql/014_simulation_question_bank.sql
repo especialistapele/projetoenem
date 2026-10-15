@@ -33,6 +33,10 @@ WHERE older.user_id IS NOT NULL
 CREATE UNIQUE INDEX IF NOT EXISTS simulation_attempts_student_question_uidx
 ON public.simulation_attempts (simulation_id, question_id, user_id)
 WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS simulation_attempts_question_idx
+ON public.simulation_attempts (question_id);
+CREATE INDEX IF NOT EXISTS simulation_questions_question_idx
+ON public.simulation_questions (question_id);
 
 ALTER TABLE public.simulation_questions ENABLE ROW LEVEL SECURITY;
 
