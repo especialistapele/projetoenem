@@ -17,5 +17,25 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Diagnose verified TLS for official hosts
+        run: |
+          python - <<'PY'
+          import ssl, urllib.request
+          for url in (
+              "https://download.inep.gov.br/enem/outros_documentos/enem_matriz_referencia.pdf",
+              "https://riep.inep.gov.br/collections/22b39e5c-3238-4414-9faf-7db037247175",
+              "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos/2025",
+          ):
+              try:
+                  with urllib.request.urlopen(url, timeout=20) as response:
+                      print(f"OK {url} -> {response.status}")
+              except Exception as exc:
+                  print(f"FAIL {url} -> {type(exc).__name__}: {exc}")
+          print("System CA paths:", ssl.get_default_verify_paths())
+          PY
+          for host in download.inep.gov.br riep.inep.gov.br www.gov.br; do
+            echo "=== curl TLS diagnostic: $host ==="
+            curl --head --location --max-time 20 "https://$host/" || true
+          done
       - name: Download and validate official source files
         run: python -m scripts.verify_official_enem
