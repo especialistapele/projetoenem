@@ -79,10 +79,13 @@ def parse_pdf(pdf_path: str, kind: str="prova") -> dict:
     questions=split_into_questions(text)
     raw_numbers = [int(m.group(1)) for m in QUESTION_START_PATTERN.finditer(text)]
     duplicate_numbers = len(raw_numbers) != len(set(raw_numbers))
-    expected_count = 90 if meta.get("day") in (1, 2) else None
+    day = meta.get("day")
+    expected_count = 90 if day in (1, 2) else None
+    expected_start = 1 if day == 1 else (91 if day == 2 else None)
+    expected_numbers = set(range(expected_start, expected_start + expected_count)) if expected_start is not None else None
     complete_numbering = (
         expected_count is None
-        or (len(questions) == expected_count and {q["number"] for q in questions} == set(range(1, expected_count + 1)))
+        or (len(questions) == expected_count and {q["number"] for q in questions} == expected_numbers)
     )
     diagnostics={"min_question":min([q["number"] for q in questions],default=None),
                  "max_question":max([q["number"] for q in questions],default=None),
