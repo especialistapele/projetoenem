@@ -7,6 +7,7 @@ import pdfplumber
 QUESTION_START_PATTERN = re.compile(r"(?im)^[ \t]*(?:QUEST[ÃA]O|QUESTAO)[ \t]*(?:N[º°.]?[ \t]*)?(\d{1,3})(?=[ \t.:)\-–—]|$)[ \t]*[.:)\-–—]?[ \t]*")
 ALT_PATTERN = re.compile(r"(?im)^\s*([A-E])\s*[\)\.]\s+")
 ANSWER_ROW_PATTERN = re.compile(r"(?m)^\s*(\d{1,3})\s+([A-E])\s*$")
+ANNULLED_ANSWER_PATTERN = re.compile(r"(?i)\b(?:QUEST[ÃA]O\s*)?(\d{1,3})\s*(?:[|:–—-]\s*)*(?:GABARITO\s*)?ANULADO\b")
 
 def normalize_text(text: str) -> str:
     text = text.replace("\u00ad", "")
