@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/>
+<title>ENEM Predict — Plataforma de previsão e estudo</title><link href="/static/css/styles.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body><div class="login-screen" id="loginScreen">
+<div class="login-glow"></div>
+<div class="login-card">
+<div class="login-brand"><span class="brand-mark">EP</span><div><strong>ENEM</strong><span>Predict</span></div></div>
+<div class="login-copy"><p class="eyebrow">INTELIGÊNCIA PARA O ENEM</p><h1>Estude com base em dados.</h1><p>Previsões históricas, desempenho individual e um plano de estudo construído para você.</p></div>
+<div id="loginMount"><section class="login-form-panel" id="authPanel" style="">
+<div class="panel-header">
+<div>
+<div class="eyebrow">SUPABASE AUTH</div>
+<h2>Acessar sua conta</h2>
+</div>
+</div>
+<div class="form-grid">
+<label>E-mail<input autocomplete="username" id="loginEmail" type="email"/></label>
+<label>Senha<input autocomplete="current-password" id="loginPassword" type="password"/></label>
+</div>
+<div class="actions">
+<button class="primary" id="loginBtn">Entrar</button>
+<button id="logoutBtn" type="button">Sair</button>
+<span id="authStatus"></span>
+<button id="forgotPasswordBtn" type="button">Esqueci minha senha</button></div>
+</section></div>
+<div class="login-foot"><span>Ambiente local</span><span>•</span><span>Supabase Auth</span></div>
+</div>
+</div><div class="app-shell is-hidden" id="appShell">
+<aside class="sidebar">
+<div class="sidebar-brand"><img src="/static/yansix-logo.png" alt="Yansix"/><div><strong>ENEM</strong><span>Predict</span></div></div>
+<div class="sidebar-context"><span class="status-dot"></span><span id="roleLabel">Área do estudante</span></div>
+<nav class="nav-group" id="studentNav">
+<span class="nav-title">ESTUDANTE</span>
+<button class="active" data-view="dashboard"><span>⌂</span> Início</button>
+<button data-view="predictions"><span>◈</span> Minha previsão</button>
+<button data-view="study"><span>▣</span> Plano de estudo</button>
+<button data-view="questions"><span>✎</span> Questões</button>
+<button data-view="performance"><span>◔</span> Meu desempenho</button>
+<button data-view="proficiency"><span>◉</span> Teste diagnóstico</button>
+<button data-view="simulations"><span>▤</span> Simulados</button>
+<button data-view="essays"><span>✍</span> Redação</button>
+<button data-view="topics"><span>◇</span> Temas</button>
+</nav>
+<nav class="nav-group admin-only" id="adminNav">
+<span class="nav-title">ADMINISTRAÇÃO</span>
+<button data-view="dashboard"><span>⌂</span> Visão geral</button>
+<button data-view="ranking"><span>↗</span> Ranking</button>
+<button data-view="classification"><span>◎</span> Classificação</button>
+<button data-view="graph"><span>⌘</span> Grafo &amp; relações</button>
+<button data-view="predictions"><span>◈</span> Motor preditivo</button>
+<button data-view="modelAdmin"><span>⚙</span> Modelos</button>
+<button data-view="validation"><span>✓</span> Validação</button>
+<button data-view="calibration"><span>◌</span> Calibração</button>
+<button data-view="importer"><span>⇩</span> Importador ENEM</button>
+<button data-view="questions"><span>✎</span> Banco de questões</button>
+<button data-view="topics"><span>◇</span> Taxonomia</button>
+<button data-view="userManagement"><span>♙</span> Usuários e professores</button>
+<button data-view="adminOverview"><span>▦</span> Painel geral</button>
+</nav>
+<nav class="nav-group teacher-only" id="teacherNav">
+<span class="nav-title">PROFESSOR</span>
+<button data-view="teacherEssays"><span>✓</span> Correções de redação</button>
+</nav>
+<div class="sidebar-bottom">
+<div class="user-chip"><div class="avatar" id="userAvatar">?</div><div><strong id="userEmailLabel">Usuário</strong><span id="userRoleSmall">Estudante</span></div></div>
+<button class="logout-btn" id="sidebarLogout">↪ Sair</button>
+<div class="api" id="apiStatus">● verificando API</div>
+</div>
+</aside>
+<div class="app-content">
+<header class="topbar">
+<div><p class="eyebrow" id="sectionEyebrow">PAINEL DO ESTUDANTE</p><h1 id="pageTitle">Início</h1></div>
+<div class="topbar-actions"><div class="program-picker"><span>Curso</span><select id="programSelect"><option value="">Selecione um curso</option></select></div><button class="ghost-btn" id="mobileLogout">Sair</button></div>
+</header>
+<main id="mainContent">
+<section class="view active" id="dashboard">
+<div class="hero">
+<div><p>Motor de previsão</p><h2>Transformando histórico em prioridade de estudo.</h2><span>Ranking híbrido com frequência, recência e tendência sobre os dados disponíveis.</span></div>
+<div class="score" id="topScore">—<small>maior prioridade</small></div>
+</div>
+<div class="stats">
+<article><b id="topicsCount">—</b><span>Temas</span></article>
+<article><b id="programsCount">—</b><span>Cursos</span></article>
+<article><b id="questionsCount">—</b><span>Questões indexadas</span></article>
+<article><b id="apiHealth">—</b><span>Status da API</span></article>
+</div>
+<section class="panel"><div class="panel-head"><div><h3>Temas em destaque</h3><p>Prioridade calculada para o curso selecionado.</p></div><button data-view="ranking">Ver ranking →</button></div><div class="ranking-list" id="featuredRanking"></div></section>
+<section class="panel"><div class="panel-head"><div><h3>Leitura do modelo</h3><p>Os componentes ajudam a interpretar por que um tema aparece no topo.</p></div></div><div class="insight-grid" id="modelSummary"></div></section><section class="panel"><div class="panel-head"><div><h3>Evolução</h3><p>Comparação dos três simulados e histórico das notas de redação.</p></div></div><div class="chart-grid"><div><h4>Simulados</h4><div id="simulationChart" class="line-chart"></div></div><div><h4>Redações</h4><div id="essayChart" class="line-chart"></div></div></div></section>
+</section>
+<section class="view" id="ranking">
+<div class="panel"><div class="panel-head"><div><h3>Ranking por curso</h3><p>Prioridade = peso da área × combinação de frequência, recência e tendência.</p></div></div>
+<div class="model-controls">
+<label>Recência <input id="recencyWeight" max="0.8" min="0" step="0.05" type="range" value="0.35"/><output id="recencyValue">0.35</output></label>
+<label>Tendência <input id="trendWeight" max="0.5" min="0" step="0.05" type="range" value="0.15"/><output id="trendValue">0.15</output></label>
+<label>Decay <input id="recencyDecay" max="1.5" min="0.05" step="0.05" type="range" value="0.35"/><output id="decayValue">0.35</output></label>
+<button class="primary" id="applyModel">Aplicar modelo</button>
+</div>
+<div class="ranking-list empty" id="rankingContent">Selecione um curso para calcular o ranking.</div></div>
+</section>
+<section class="view" id="topics">
+<div class="toolbar"><input id="topicSearch" placeholder="Buscar tema..."/><select id="areaFilter"><option value="">Todas as áreas</option></select><select id="subjectFilter"><option value="">Todas as disciplinas</option></select></div>
+<div class="cards" id="topicsGrid"></div>
+<div class="panel topic-analytics" id="topicAnalytics" style="display:none"></div>
+</section>
+<section class="view" id="questions">
+<div class="panel"><div class="panel-head"><div><h3>Banco de questões</h3><p>Consulte questões reais do banco com filtros e paginação.</p></div></div>
+<div class="toolbar"><input id="questionSearch" placeholder="Buscar palavras nas questões"/><select id="questionYear"><option value="">Todos os anos</option></select><select id="questionSubject"><option value="">Todas as disciplinas</option></select><select id="questionTopic"><option value="">Todos os temas</option></select><button id="searchQuestions">Buscar</button></div>
+<div class="question-list" id="questionsList"></div><div class="pager" id="questionPager"></div>
+</div>
+</section>
+<section class="view" id="graph">
+<div class="panel"><div class="toolbar"><select id="graphTopic"><option value="">Selecione um tema</option></select><button id="loadGraph">Ver relações</button></div><div class="graph empty" id="graphContent">Selecione um tema para visualizar suas conexões.</div></div>
+</section>
+<section class="view" id="calibration">
+<div class="panel"><div class="panel-head"><div><h3>Calibração exploratória</h3><p>Testa combinações de recência e tendência no histórico atual e sugere a melhor configuração.</p></div><button class="primary" id="runCalibration">Calibrar modelo</button></div><div class="validation-content empty" id="calibrationContent">Clique em “Calibrar modelo” para procurar a melhor combinação.</div></div>
+<div class="panel"><div class="panel-head"><div><h3>Diagnóstico do banco</h3><p>Confirma se as tabelas necessárias ao motor estão acessíveis.</p></div><button id="runDiagnostics">Verificar banco</button></div><div class="validation-content empty" id="diagnosticsContent">Clique em “Verificar banco”.</div></div>
+</section>
+<section class="view" id="classification">
+<div class="panel"><div class="panel-head"><div><h3>Revisão da classificação</h3><p>Gera candidatos auditáveis e permite ao administrador aprovar ou rejeitar classificações antes de consolidá-las.</p></div><div><button class="primary" id="generateCandidates">Gerar candidatos</button> <button id="refreshCandidates">Atualizar</button></div></div>
+<div class="backtest-metrics" id="classificationMetrics"></div><div class="toolbar"><select id="candidateStatus"><option value="">Todos</option><option value="pending">Pendentes</option><option value="review">Revisão</option><option value="accepted">Aceitos</option><option value="rejected">Rejeitados</option></select></div><div class="question-list" id="classificationList"></div></div>
+</section>
+<section class="view" id="predictions">
+<div class="panel"><div class="panel-head"><div><h3>Previsão de temas</h3><p>Probabilidade relativa calculada pelo histórico, recência, tendência, peso do curso e grafo.</p></div><button class="primary" id="generatePredictions">Gerar previsão</button></div>
+<div class="backtest-metrics" id="predictionSummary"></div><div class="ranking-list empty" id="predictionList">Selecione um curso e gere uma previsão.</div></div>
+</section>
+<section class="view" id="study">
+<div class="panel"><div class="panel-head"><div><h3>Plano de estudo personalizado</h3><p>Organiza as previsões em prioridades práticas e mostra questões disponíveis para cada tema.</p></div><button class="primary" id="loadStudyPlan">Montar plano</button></div>
+<div class="backtest-metrics" id="studySummary"></div><div class="ranking-list empty" id="studyList">Selecione um curso e monte o plano.</div><div class="panel"><div class="panel-head"><div><h3>Teia Cognitiva</h3><p>Visão hierárquica do domínio: área → disciplina → conteúdo.</p></div><button id="loadCognitiveMap">Atualizar teia</button></div><div id="cognitiveMap" class="cards"><div class="empty">Clique em atualizar para visualizar.</div></div></div></div>
+</section>
+<section class="view" id="simulations">
+<div class="panel"><div class="panel-head"><div><h3>Simulados ENEM</h3><p>Três simulados por ciclo, com análise por área, competência e habilidade quando a taxonomia estiver vinculada.</p></div><button class="primary" id="seedSimulations">Atualizar ciclo</button></div><div class="cards" id="simulationCards"></div><div class="panel" id="simulationResult" style="display:none"></div></div>
+</section>
+<section class="view" id="essays">
+<div class="panel"><div class="panel-head"><div><h3>Minha redação</h3><p>Uma redação por mês. Após o envio, o professor tem até 7 dias para devolver a correção.</p></div></div><div class="form-grid"><label>Título<input id="essayTitle" placeholder="Redação de agosto"/></label><label>Texto<textarea id="essayText" rows="16" placeholder="Digite sua redação aqui..."></textarea></label></div><button class="primary" id="submitEssay">Enviar redação</button><div class="question-list" id="essayHistory"></div></div>
+</section>
+<section class="view" id="teacherEssays">
+<div class="panel"><div class="panel-head"><div><h3>Correções de redação</h3><p>Fila de redações enviadas pelos alunos. Prazo operacional: 7 dias.</p></div><button id="refreshTeacherEssays">Atualizar</button></div><div class="question-list" id="teacherEssayList"></div></div>
+<div class="panel" id="teacherEssayEditor" style="display:none"><h3>Correção</h3><div id="teacherEssayText" class="essay-text"></div><div class="model-controls"><label>Nota <input id="reviewScore" type="number" min="0" max="1000"/></label><label>C1 <input id="reviewC1" type="number" min="0" max="200"/></label><label>C2 <input id="reviewC2" type="number" min="0" max="200"/></label><label>C3 <input id="reviewC3" type="number" min="0" max="200"/></label><label>C4 <input id="reviewC4" type="number" min="0" max="200"/></label><label>C5 <input id="reviewC5" type="number" min="0" max="200"/></label></div><textarea id="reviewFeedback" rows="8" placeholder="Feedback ao aluno"></textarea><textarea id="reviewStrengths" rows="4" placeholder="Pontos fortes"></textarea><textarea id="reviewImprovements" rows="4" placeholder="Pontos a melhorar"></textarea><button class="primary" id="saveReview">Devolver correção</button></div>
+</section>
+<section class="view" id="adminOverview"><div class="panel"><div class="panel-head"><div><h3>Painel geral do administrador</h3><p>Visão operacional de usuários, professores, conteúdo, aprendizagem, redações e TRI estimativa.</p></div><button class="primary" id="refreshAdminOverview">Atualizar painel</button></div><div class="stats" id="adminOverviewStats"></div><div class="chart-grid"><div class="panel"><h3>Operação acadêmica</h3><div class="backtest-metrics" id="adminLearningMetrics"></div></div><div class="panel"><h3>Qualidade do banco e TRI</h3><div class="backtest-metrics" id="adminTriMetrics"></div></div></div><div class="panel"><div class="panel-head"><div><h3>Carga dos professores</h3><p>Distribuição de alunos por professor para gestão rápida.</p></div></div><div class="cards" id="adminTeacherLoad"></div></div></div></section>
+<section class="view" id="proficiency">
+<div class="panel"><div class="panel-head"><div><h3>Teste de proficiência</h3><p>Diagnóstico inicial para mapear áreas, lacunas e orientar sua trilha. A pontuação TRI exibida é apenas estimativa pedagógica.</p></div><div><select id="proficiencyCount"><option value="20">20 questões</option><option value="40" selected>40 questões</option><option value="60">60 questões</option></select> <button class="primary" id="startProficiency">Iniciar teste</button></div></div>
+<div id="proficiencyProgress" class="backtest-metrics"></div><div id="proficiencyQuestion" class="card empty">Inicie o teste para começar o diagnóstico.</div><div class="actions"><button id="finishProficiency" class="primary" style="display:none">Finalizar diagnóstico</button></div><div id="proficiencyResult" class="cards"></div></div>
+</section>
+<section class="view" id="performance">
+<div class="panel"><div class="panel-head"><div><h3>Meu desempenho</h3><p>Seu histórico de respostas é usado para identificar lacunas e personalizar o plano de estudo.</p></div><button class="primary" id="refreshPerformance">Atualizar</button></div>
+<div class="panel"><div class="panel-head"><div><h3>Proficiência estimada</h3><p>Modelo TRI 3PL pedagógico; não é nota oficial do ENEM.</p></div><button id="refreshTri">Calcular estimativa</button></div><div class="backtest-metrics" id="triSummary"></div></div><div class="backtest-metrics" id="performanceSummary"></div><div class="ranking-list empty" id="performanceList">Entre com sua conta para visualizar seu desempenho.</div></div>
+</section>
+<section class="view" id="modelAdmin">
+<div class="panel"><div class="panel-head"><div><h3>Administração do modelo</h3><p>Versione e ative configurações do motor sem editar o código.</p></div><button id="refreshModels">Atualizar</button></div>
+<div class="question-list" id="modelList"></div></div>
+<div class="panel"><div class="panel-head"><div><h3>Nova configuração</h3><p>Os quatro pesos devem somar 1,00.</p></div></div>
+<div class="model-controls"><label>Nome<input id="modelName" value="custom"/></label><label>Versão<input id="modelVersion" value="predictor-v3"/></label><label>Frequência<input id="modelFrequency" max="1" min="0" step="0.05" type="number" value="0.25"/></label><label>Recência<input id="modelRecency" max="1" min="0" step="0.05" type="number" value="0.30"/></label><label>Tendência<input id="modelTrend" max="1" min="0" step="0.05" type="number" value="0.25"/></label><label>Grafo<input id="modelGraph" max="1" min="0" step="0.05" type="number" value="0.20"/></label><button class="primary" id="createModel">Criar modelo</button></div></div>
+<div class="panel"><div class="panel-head"><h3>Execuções recentes</h3></div><div class="question-list" id="modelRuns"></div></div>
+</section>
+<section class="view" id="validation">
+<div class="panel"><div class="panel-head"><div><h3>Validação contínua</h3><p>Backtest exploratório usando somente os anos anteriores a cada ano avaliado.</p></div><button id="runBacktest">Executar</button></div><div class="validation-content empty" id="backtestContent">Clique em executar para medir o hit rate do modelo sobre o reservatório atual.</div></div>
+</section>
+<section class="view" id="userManagement">
+<div class="panel"><div class="panel-head"><div><h3>Usuários, cursos e professores</h3><p>Crie contas e distribua os alunos entre os professores.</p></div><button id="refreshAdminUsers">Atualizar</button></div>
+<div class="form-grid admin-create-grid"><label>Nome<input id="adminUserName" placeholder="Nome completo"/></label><label>E-mail<input id="adminUserEmail" type="email" placeholder="email@exemplo.com"/></label><label>Senha<input id="adminUserPassword" type="password" placeholder="Mínimo 8 caracteres"/></label><label>Perfil<select id="adminUserRole"><option value="student">Estudante</option><option value="teacher">Professor</option><option value="admin">Administrador</option></select></label><label>Curso<select id="adminUserProgram"><option value="">Sem curso</option></select></label><button class="primary" id="createAdminUser">Criar conta</button></div></div>
+<div class="panel"><div class="panel-head"><div><h3>Distribuição de alunos</h3><p>Modelo gestor → vendedores: cada professor pode receber vários alunos.</p></div></div><div class="toolbar"><select id="adminTeacherSelect"><option value="">Selecione um professor</option></select><select id="adminStudentSelect"><option value="">Selecione um aluno</option></select><button class="primary" id="assignStudent">Vincular aluno</button></div><div class="question-list" id="teacherAssignments"></div></div>
+<div class="panel"><div class="panel-head"><h3>Usuários cadastrados</h3></div><div class="question-list" id="adminUsersList"></div></div>
+</section>
+<section class="view" id="importer">
+<div class="importer-hero">
+<div>
+<p class="eyebrow">INGESTÃO OFICIAL</p>
+<h2>Importador ENEM</h2>
+<p>Descubra cadernos e gabaritos oficiais do INEP, baixe-os em lote e mantenha os arquivos em uma área de staging antes da importação definitiva.</p>
+</div>
+<div class="source-badge">INEP · RIEP</div>
+</div>
+<div class="panel"><div class="panel-head"><div><h3>Área temporária de processamento</h3><p id="importQuota">Consultando uso do armazenamento…</p></div></div></div>
+<div class="panel">
+<div class="panel-head"><div><h3>1. Descobrir arquivos</h3><p>Comece por 2025 para validar o pipeline. Anos anteriores apontam para o catálogo oficial do RIEP.</p></div></div>
+<div class="import-form">
+<label>Ano inicial<select id="importYearStart"></select></label>
+<label>Ano final<select id="importYearEnd"></select></label>
+<label>Aplicação<select id="importApplication"><option value="regular">Regular</option><option value="ppl">PPL</option><option value="reaplicacao">Reaplicação</option></select></label>
+<label class="check"><input checked="" id="onlyAvailable" type="checkbox"/> somente arquivos encontrados</label>
+<button class="primary" id="discoverImports">🔎 Buscar no INEP</button>
+</div>
+</div>
+<div class="panel">
+<div class="panel-head"><div><h3>2. Arquivos encontrados</h3><p id="importSummary">Nenhuma busca realizada.</p></div><button class="primary" id="downloadSelected">⬇ Baixar selecionados</button></div>
+<div class="import-files" id="importFiles"><div class="empty">Clique em “Buscar no INEP”.</div></div>
+</div>
+<div class="panel">
+<div class="panel-head"><div><h3>3. Staging e extração</h3><p>Os PDFs ficam preservados com hash. A extração gera JSON intermediário e não altera o banco definitivo.</p></div><div><button id="refreshManifest">Atualizar</button> <button class="primary" id="parseSelected">⚙ Extrair selecionados</button></div></div>
+<div class="import-manifest" id="importManifest"><div class="empty">Nenhum arquivo baixado.</div></div>
+</div>
+<div class="panel">
+<div class="panel-head"><div><h3>4. Validar e preparar lote</h3><p>Audita pares prova/gabarito, duplicidades e qualidade antes de preparar o lote. A gravação definitiva fica separada.</p></div><div><button id="preflightImport">🛡 Validar staging</button> <button class="primary" id="prepareImport">🧩 Preparar lote</button> <button id="dryRunImport">🔍 Simular importação</button> <button class="primary" id="commitImport">💾 Gravar no banco</button></div></div>
+<div class="import-manifest" id="preparedImport"><div class="empty">Nenhum lote preparado.</div></div>
+</div>
+</section>
+</main><footer class="site-footer"><span>Desenvolvido por <a href="https://yansix.tech" target="_blank" rel="noopener">Yansix</a> com S2 - 2026</span></footer>
+</div>
+</div><script src="/static/js/app.js"></script><script src="/static/js/frontend-shell.js"></script></body></html>

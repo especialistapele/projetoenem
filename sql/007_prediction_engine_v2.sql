@@ -1,0 +1,2 @@
+-- Applied in Supabase project evqbhkrjguramcphdjtk as the prediction result schema.
+-- Kept with the release for reproducibility; use the existing production migration when syncing a fresh database.
