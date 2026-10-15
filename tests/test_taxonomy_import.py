@@ -30,7 +30,7 @@ class TaxonomyParserTests(unittest.TestCase):
             self.assertEqual(codes, {f"H{i}" for i in range(1, 31)})
 
     def test_rejects_matrix_with_missing_area_or_skill(self):
-        text = synthetic_matrix().replace("H30 - Descrição oficial de teste da habilidade 30 na área MT.\n", "")
+        text = synthetic_matrix().replace("H30 - Descrição oficial de teste da habilidade 30 na área MT.", "")
         with self.assertRaisesRegex(ValueError, "Matriz extraída incompleta"):
             parse_matrix_text(text)
 
