@@ -6,7 +6,7 @@ from app.supabase_auth import require_admin
 from app.database import SessionLocal
 from sqlalchemy import text
 from pydantic import BaseModel, Field
-from app.services.enem_importer import discover, download_pdf, write_manifest, classify_document, file_identity, validate_pdf_bytes
+from app.services.enem_importer import discover, download_pdf, write_manifest, classify_document, file_identity, validate_pdf_bytes, candidate_official_cycle
 from scripts.import_taxonomy import run_import as run_taxonomy_import
 from scripts.parse_pdf import parse_pdf
 from app.services.classifier import classify_question, official_area_for_question_number
@@ -34,22 +34,16 @@ class ImportRequest(BaseModel):
 class TaxonomyImportRequest(BaseModel):
     dry_run: bool = True
 
-class OfficialBlueImportRequest(BaseModel):
+class OfficialCycleImportRequest(BaseModel):
     dry_run: bool = True
 
 
-@router.post("/import-official-2025-blue")
-def import_official_2025_blue(payload: OfficialBlueImportRequest):
-    """Baixa, extrai e valida os cadernos oficiais azuis de 2025 (180 questões no total)."""
+@router.post("/import-official-cycle")
+def import_official_cycle(payload: OfficialCycleImportRequest):
+    """Baixa e valida três provas completas oficiais distintas (2023–2025, 540 questões)."""
     if SessionLocal is None:
         raise HTTPException(503, "Banco não configurado.")
-    from app.services.enem_importer import candidate_2025
-
-    selected = [
-        item for item in candidate_2025()
-        if (item.get("day") == 1 and item.get("caderno") == 1)
-        or (item.get("day") == 2 and item.get("caderno") == 7)
-    ]
+    selected = candidate_official_cycle()
     downloaded = []
     parsed_files = []
     parsed_paths = set()
@@ -59,7 +53,9 @@ def import_official_2025_blue(payload: OfficialBlueImportRequest):
             write_manifest(BASE_DIR, [record])
             downloaded.append({
                 "filename": record.get("filename"),
+                "year": item["year"],
                 "day": item["day"],
+                "color": item["color"],
                 "document_type": item["document_type"],
                 "status": record.get("status"),
             })
@@ -71,9 +67,9 @@ def import_official_2025_blue(payload: OfficialBlueImportRequest):
             kind = "gabarito" if item["document_type"] == "gabarito" else "caderno"
             parsed = parse_pdf(str(pdf_path), kind)
             parsed.update({
-                "year": 2025,
+                "year": item["year"],
                 "day": item["day"],
-                "color": "Azul",
+                "color": item["color"],
                 "caderno": item["caderno"],
                 "document_type": kind,
                 "special_version": False,
@@ -84,7 +80,9 @@ def import_official_2025_blue(payload: OfficialBlueImportRequest):
             parsed_paths.add(str(parsed_path.relative_to(BASE_DIR.parent.parent)))
             parsed_files.append({
                 "filename": item["filename"],
+                "year": item["year"],
                 "day": item["day"],
+                "color": item["color"],
                 "document_type": kind,
                 "questions_found": parsed.get("questions_found", 0),
                 "answers_found": parsed.get("answers_found", 0),
@@ -96,7 +94,7 @@ def import_official_2025_blue(payload: OfficialBlueImportRequest):
         summary = import_dataset_run(str(dataset_path), dry_run=payload.dry_run)
         return {
             "status": "dry_run" if payload.dry_run else "imported",
-            "source": "INEP 2025 — cadernos azuis regulares, dias 1 e 2",
+            "source": "INEP 2023–2025 — três provas regulares completas (540 questões esperadas)",
             "downloaded": downloaded,
             "parsed": parsed_files,
             "prepared": {
@@ -110,7 +108,7 @@ def import_official_2025_blue(payload: OfficialBlueImportRequest):
             "import_summary": summary,
         }
     except Exception as exc:
-        raise HTTPException(422, f"Falha no fluxo oficial de importação ENEM 2025: {exc}")
+        raise HTTPException(422, f"Falha no fluxo oficial de importação ENEM 2023–2025: {exc}")
 
 
 @router.post("/taxonomy")
