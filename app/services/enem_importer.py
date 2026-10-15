@@ -22,8 +22,11 @@ COLORS = {1:"Azul",2:"Amarelo",3:"Branco",4:"Rosa",5:"Cinza"}
 
 def _urlopen_verified(request, timeout=30):
     """Open HTTPS with certificate verification against the maintained certifi CA bundle."""
+    # Keep platform roots and add certifi/custom roots. Replacing the system store
+    # with a single custom bundle can accidentally remove public roots needed by INEP.
+    context = ssl.create_default_context()
     ca_bundle = os.environ.get("ENEM_CA_BUNDLE") or certifi.where()
-    context = ssl.create_default_context(cafile=ca_bundle)
+    context.load_verify_locations(cafile=ca_bundle)
     return urlopen(request, timeout=timeout, context=context)
 
 def candidate_2025():
