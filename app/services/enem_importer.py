@@ -160,13 +160,13 @@ def download_pdf(item:dict, base_dir:Path):
             except OSError:
                 pass
     if duplicate is not None:
-        record={**item,"status":"duplicate","storage_path":str(duplicate.relative_to(base_dir.parent)),
+        record={**item,"status":"duplicate","storage_path":str(duplicate.relative_to(base_dir.parent.parent)),
                 "sha256":h,"file_size_bytes":len(raw),"document_type":kind,
                 "special_version":special,"identity":file_identity(item),
                 "validation":"valid","duplicate_of":str(duplicate.relative_to(base_dir.parent))}
         return record
     dest.write_bytes(bytes(raw))
-    record={**item,"status":"downloaded","storage_path":str(dest.relative_to(base_dir.parent)),
+    record={**item,"status":"downloaded","storage_path":str(dest.relative_to(base_dir.parent.parent)),
             "sha256":h,"file_size_bytes":len(raw),"document_type":kind,
             "special_version":special,"identity":file_identity(item),
             "validation":"valid"}
