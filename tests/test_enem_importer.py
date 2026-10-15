@@ -76,9 +76,22 @@ class EnemImporterTests(unittest.TestCase):
         self.assertEqual(normalize_area("Linguagens"), ("LC", "Linguagens, Códigos e suas Tecnologias"))
         self.assertEqual(normalize_area("Ciências da Natureza"), ("CN", "Ciências da Natureza e suas Tecnologias"))
 
+    def test_dataset_rejects_unclassified_question(self):
+        payload = {"questions": [{
+            "statement_text": "Enunciado de teste",
+            "alternatives": [
+                {"letter": "A", "text": "A", "is_correct": True},
+                {"letter": "B", "text": "B", "is_correct": False},
+            ],
+        }]}
+        with self.assertRaisesRegex(ValueError, "área/disciplina não classificada"):
+            validate_dataset(payload)
+
     def test_dataset_rejects_question_without_exactly_one_answer(self):
         payload = {"questions": [{
             "statement_text": "Enunciado de teste",
+            "area": "Matemática",
+            "subject": "Matemática",
             "alternatives": [
                 {"letter": "A", "text": "A", "is_correct": False},
                 {"letter": "B", "text": "B", "is_correct": False},
