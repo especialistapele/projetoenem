@@ -34,6 +34,83 @@ class ImportRequest(BaseModel):
 class TaxonomyImportRequest(BaseModel):
     dry_run: bool = True
 
+class OfficialBlueImportRequest(BaseModel):
+    dry_run: bool = True
+
+
+@router.post("/import-official-2025-blue")
+def import_official_2025_blue(payload: OfficialBlueImportRequest):
+    """Baixa, extrai e valida os cadernos oficiais azuis de 2025 (180 questões no total)."""
+    if SessionLocal is None:
+        raise HTTPException(503, "Banco não configurado.")
+    from app.services.enem_importer import candidate_2025
+
+    selected = [
+        item for item in candidate_2025()
+        if (item.get("day") == 1 and item.get("caderno") == 1)
+        or (item.get("day") == 2 and item.get("caderno") == 7)
+    ]
+    downloaded = []
+    parsed_files = []
+    try:
+        for item in selected:
+            record = download_pdf(item, BASE_DIR)
+            write_manifest(BASE_DIR, [record])
+            downloaded.append({
+                "filename": record.get("filename"),
+                "day": item["day"],
+                "document_type": item["document_type"],
+                "status": record.get("status"),
+            })
+            if record.get("status") == "duplicate":
+                storage_path = record["storage_path"]
+            else:
+                storage_path = record["storage_path"]
+            pdf_path = (BASE_DIR.parent.parent / storage_path).resolve()
+            kind = "gabarito" if item["document_type"] == "gabarito" else "caderno"
+            parsed = parse_pdf(str(pdf_path), kind)
+            parsed.update({
+                "year": 2025,
+                "day": item["day"],
+                "color": "Azul",
+                "caderno": item["caderno"],
+                "document_type": kind,
+                "special_version": False,
+                "source_url": item["source_url"],
+            })
+            parsed_path = pdf_path.with_suffix(".parsed.json")
+            parsed_path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
+            parsed_files.append({
+                "filename": item["filename"],
+                "day": item["day"],
+                "document_type": kind,
+                "questions_found": parsed.get("questions_found", 0),
+                "answers_found": parsed.get("answers_found", 0),
+                "quality_status": (parsed.get("diagnostics") or {}).get("quality_status"),
+            })
+
+        prepared = prepare_dataset()
+        dataset_path = BASE_DIR / "prepared_dataset.json"
+        summary = import_dataset_run(str(dataset_path), dry_run=payload.dry_run)
+        return {
+            "status": "dry_run" if payload.dry_run else "imported",
+            "source": "INEP 2025 — cadernos azuis regulares, dias 1 e 2",
+            "downloaded": downloaded,
+            "parsed": parsed_files,
+            "prepared": {
+                "groups": prepared.get("groups", 0),
+                "questions": prepared.get("questions", 0),
+                "questions_with_answer": prepared.get("questions_with_answer", 0),
+                "questions_without_answer": prepared.get("questions_without_answer", 0),
+                "questions_unclassified": prepared.get("questions_unclassified", 0),
+                "group_status": prepared.get("groups"),
+            },
+            "import_summary": summary,
+        }
+    except Exception as exc:
+        raise HTTPException(422, f"Falha no fluxo oficial de importação ENEM 2025: {exc}")
+
+
 @router.post("/taxonomy")
 def import_official_taxonomy(payload: TaxonomyImportRequest):
     """Extrai e valida a Matriz oficial do INEP; por padrão não grava alterações."""
@@ -211,11 +288,12 @@ def prepare_dataset():
                 alts.append(a)
             if answer and sum(1 for alt in alts if alt["is_correct"]) == 1:
                 group["matched_answers"] += 1
+            subject_name = cls.get("subject") or ("Classificação pendente" if official_area else None)
             questions.append({
                 "exam": {"year": year, "edition": "regular", "color": str(color_code or "azul").lower(), "day": day},
                 "number": number,
                 "area": cls.get("area"),
-                "subject": cls.get("subject"),
+                "subject": subject_name,
                 "statement_text": text,
                 "alternatives": alts,
                 "topics": [],
@@ -234,7 +312,7 @@ def prepare_dataset():
                "diagnostics": {"groups": len(groups), "questions": len(questions),
                                "questions_with_answer": sum(1 for q in questions if any(a.get("is_correct") for a in q["alternatives"])),
                                "questions_without_answer": sum(1 for q in questions if not any(a.get("is_correct") for a in q["alternatives"])),
-                               "questions_unclassified": sum(1 for q in questions if not q.get("area") or not q.get("subject"))}}
+                               "questions_unclassified": sum(1 for q in questions if not q.get("area") or not (q.get("classification") or {}).get("subject"))}}
     out = BASE_DIR / "prepared_dataset.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"status": "prepared", "path": str(out.relative_to(BASE_DIR.parent.parent)), **payload["diagnostics"], "groups": groups}
