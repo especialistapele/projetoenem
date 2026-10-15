@@ -77,7 +77,7 @@ def infer_metadata(filename: str, document_text: str = "") -> dict:
     color_names = ("Azul", "Amarelo", "Branco", "Verde", "Cinza", "Rosa", "Laranja", "Roxo")
     color = next((name for name in color_names if re.search(r"\b" + re.escape(name.lower()) + r"\b", low)), None)
     if not color:
-    color = next((name for name in color_names if re.search(r"\b" + re.escape(name.lower()) + r"\b", low)), None)
+        color = next((name for name in color_names if re.search(r"\b" + re.escape(name.lower()) + r"\b", cover)), None)
 
     # Fallback oficial específico da aplicação regular de 2025.
     if not color and year == 2025:
