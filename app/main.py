@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -9,7 +9,7 @@ from sqlalchemy import text, inspect
 from app.api import analytics, catalog, classification, programs, questions, scoring, topics, enem_import, model_admin, student, learning, admin
 from app.database import SessionLocal, database_status
 from app.config import settings
-from app.supabase_auth import get_current_supabase_user
+from app.supabase_auth import get_current_supabase_user, require_admin
 from app.models import Exam, Question, Topic, Alternative, QuestionTopic, TopicEdge, TopicYearFrequency, Program
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -87,7 +87,7 @@ def stats():
 
 
 @app.get("/api/diagnostics")
-def diagnostics():
+def diagnostics(_admin=Depends(require_admin)):
     """Diagnóstico operacional do banco e da estrutura exigida pela aplicação."""
     if SessionLocal is None:
         return {"status": "degraded", "database": False, "error": "DATABASE_URL não configurada", "checks": {}}
