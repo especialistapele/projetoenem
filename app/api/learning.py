@@ -221,7 +221,7 @@ def dashboard_history(user=Depends(get_current_supabase_user),db:Session=Depends
     sim_out=[]
     for s in sims:
         rows=db.query(SimulationAttempt).filter_by(simulation_id=s.id,user_id=uid(user)).all(); total=len(rows); correct=sum(bool(x.is_correct) for x in rows)
-        sim_out.append({"sequence":s.sequence,"title":s.title,"answered":total,"correct":correct,"accuracy":correct/total if total else 0,"estimated_score":round(300+(correct/total)*400,1) if total else None})
+        sim_out.append({"sequence":s.sequence,"title":s.title,"answered":total,"correct":correct,"accuracy":correct/total if total else 0,"estimated_score":round(300+(correct/total)*400,1) if total else None,"score_note":"Estimativa linear simplificada para acompanhamento; não representa a nota oficial TRI do ENEM."})
     essays=db.query(EssaySubmission).options(joinedload(EssaySubmission.review)).filter_by(user_id=uid(user)).order_by(EssaySubmission.submitted_at).all()
     essay_out=[{"title":e.title,"submitted_at":e.submitted_at.isoformat(),"score":float(e.review.score) if e.review else None,"status":e.status} for e in essays]
     return {"simulations":sim_out,"essays":essay_out}
