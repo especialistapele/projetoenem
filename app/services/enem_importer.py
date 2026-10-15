@@ -5,7 +5,7 @@ URLs diretas conhecidas; para anos anteriores, o sistema aponta o catálogo
 oficial do repositório RIEP para evitar adivinhar URLs.
 """
 from __future__ import annotations
-import hashlib, json, re, html
+import hashlib, json, re, html, time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -118,6 +118,21 @@ def validate_pdf_bytes(data: bytes) -> tuple[bool, str]:
         return False, "PDF muito pequeno; download possivelmente incompleto."
     return True, "PDF válido"
 
+def _open_url_with_retries(request, timeout=90, attempts=3):
+    """Retry transient network resets/timeouts without retrying HTTP error responses."""
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            return urlopen(request, timeout=timeout)
+        except HTTPError:
+            raise
+        except (URLError, TimeoutError, ConnectionError) as exc:
+            last_error = exc
+            if attempt + 1 < attempts:
+                time.sleep(1.5 * (2 ** attempt))
+    raise last_error
+
+
 def download_pdf(item:dict, base_dir:Path):
     if not item.get("source_url") or item.get("document_type")=="catalog":
         raise ValueError("Item não possui URL direta de PDF.")
@@ -137,7 +152,7 @@ def download_pdf(item:dict, base_dir:Path):
         raise ValueError("A origem do PDF deve ser HTTPS e pertencer a um domínio oficial do INEP/Gov.br/RIEP.")
     req=Request(source_url, headers={"User-Agent":"ENEM-Predict/1.0"})
     raw=bytearray()
-    with urlopen(req, timeout=90) as response:
+    with _open_url_with_retries(req, timeout=90) as response:
         final=urlparse(response.geturl())
         if final.scheme != "https" or (final.hostname or "").lower() not in ALLOWED_PDF_HOSTS:
             raise ValueError("O download foi redirecionado para um domínio não autorizado.")
