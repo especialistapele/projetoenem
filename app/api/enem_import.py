@@ -52,6 +52,7 @@ def import_official_2025_blue(payload: OfficialBlueImportRequest):
     ]
     downloaded = []
     parsed_files = []
+    parsed_paths = set()
     try:
         for item in selected:
             record = download_pdf(item, BASE_DIR)
@@ -80,6 +81,7 @@ def import_official_2025_blue(payload: OfficialBlueImportRequest):
             })
             parsed_path = pdf_path.with_suffix(".parsed.json")
             parsed_path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
+            parsed_paths.add(str(parsed_path.relative_to(BASE_DIR.parent.parent)))
             parsed_files.append({
                 "filename": item["filename"],
                 "day": item["day"],
@@ -89,7 +91,7 @@ def import_official_2025_blue(payload: OfficialBlueImportRequest):
                 "quality_status": (parsed.get("diagnostics") or {}).get("quality_status"),
             })
 
-        prepared = prepare_dataset()
+        prepared = prepare_dataset(only_paths=parsed_paths)
         dataset_path = BASE_DIR / "prepared_dataset.json"
         summary = import_dataset_run(str(dataset_path), dry_run=payload.dry_run)
         return {
@@ -236,9 +238,12 @@ def _metadata_from_path(path: Path, data: dict):
 
 
 @router.post("/prepare")
-def prepare_dataset():
-    """Consolida cadernos + gabaritos parseados em um JSON pronto para revisão/importação."""
+def prepare_dataset(only_paths: set[str] | None = None):
+    """Consolida cadernos + gabaritos parseados; opcionalmente limita a um lote específico."""
     files = list(BASE_DIR.rglob("*.parsed.json")) if BASE_DIR.exists() else []
+    if only_paths is not None:
+        root = BASE_DIR.parent.parent
+        files = [path for path in files if str(path.relative_to(root)) in only_paths]
     notebooks = {}
     keys = {}
     for path in files:
