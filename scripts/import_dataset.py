@@ -20,10 +20,31 @@ from app.database import SessionLocal
 from app.models import Alternative, Exam, KnowledgeArea, Question, QuestionTopic, Subject, Topic
 
 
+AREA_ALIASES = {
+    "Linguagens": ("LC", "Linguagens, Códigos e suas Tecnologias"),
+    "Linguagens, Códigos e suas Tecnologias": ("LC", "Linguagens, Códigos e suas Tecnologias"),
+    "Ciências Humanas": ("CH", "Ciências Humanas e suas Tecnologias"),
+    "Ciências Humanas e suas Tecnologias": ("CH", "Ciências Humanas e suas Tecnologias"),
+    "Ciências da Natureza": ("CN", "Ciências da Natureza e suas Tecnologias"),
+    "Ciências da Natureza e suas Tecnologias": ("CN", "Ciências da Natureza e suas Tecnologias"),
+    "Matemática": ("MT", "Matemática e suas Tecnologias"),
+    "Matemática e suas Tecnologias": ("MT", "Matemática e suas Tecnologias"),
+    "Redação": ("RED", "Redação"),
+}
+
+
+def normalize_area(area_name):
+    label = (area_name or "Não classificada").strip()
+    return AREA_ALIASES.get(label, (None, label))
+
+
 def find_or_create_subject(db, name, area_name="Não classificada"):
-    area = db.query(KnowledgeArea).filter_by(name=area_name).first()
+    area_code, canonical_name = normalize_area(area_name)
+    area = db.query(KnowledgeArea).filter_by(code=area_code).first() if area_code else None
     if not area:
-        area = KnowledgeArea(name=area_name)
+        area = db.query(KnowledgeArea).filter_by(name=canonical_name).first()
+    if not area:
+        area = KnowledgeArea(name=canonical_name, code=area_code)
         db.add(area)
         db.flush()
     subject = db.query(Subject).filter_by(knowledge_area_id=area.id, name=name).first()
