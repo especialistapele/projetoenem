@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.services.scoring import hybrid_score
 from app.services.predictor import build_prediction, softmax
+from app.models import ProgramWeight, Topic, TopicEdge, TopicYearFrequency
+from app.supabase_auth import require_admin
 
 router = APIRouter(prefix="/scoring", tags=["scoring"])
 
@@ -15,6 +17,7 @@ def get_priority_ranking(
     trend_weight: float = Query(0.15, ge=0, le=1),
     recency_decay: float = Query(0.35, gt=0, le=2),
     db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
 ):
     if recency_weight + trend_weight > 1:
         raise HTTPException(status_code=400, detail="A soma dos pesos de recência e tendência deve ser <= 1")
