@@ -57,7 +57,15 @@ def set_program(payload: ProgramSelectionIn, db: Session = Depends(get_db), user
     uid=_user_id(user)
     if payload.program_id is not None and not db.query(Program).filter_by(id=payload.program_id).first():
         raise HTTPException(404,'Curso não encontrado.')
-    db.execute(__import__('sqlalchemy').text("UPDATE public.user_profiles SET program_id=:pid, updated_at=now() WHERE user_id=:uid"), {'pid':payload.program_id,'uid':uid})
+    db.execute(__import__('sqlalchemy').text("""
+        INSERT INTO public.user_profiles (user_id, role, program_id, display_name)
+        SELECT u.id,
+               CASE WHEN u.raw_app_meta_data->>'role' IN ('admin','teacher','student') THEN u.raw_app_meta_data->>'role' ELSE 'student' END,
+               :pid,
+               COALESCE(NULLIF(u.raw_user_meta_data->>'display_name',''), NULLIF(split_part(COALESCE(u.email,''),'@',1),''), 'Usuário')
+        FROM auth.users u WHERE u.id=:uid
+        ON CONFLICT (user_id) DO UPDATE SET program_id=EXCLUDED.program_id, updated_at=now()
+    """), {'pid':payload.program_id,'uid':uid})
     db.commit(); return {'program_id':payload.program_id}
 
 @router.post('/attempts')
