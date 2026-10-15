@@ -215,7 +215,56 @@ async function importPrepared(dry){
 }
 $('#prepareImport').onclick=prepareImport;
 $('#dryRunImport').onclick=()=>importPrepared(true);
+
 $('#commitImport').onclick=()=>importPrepared(false);
+
+function showOfficialCycleReport(result, canCommit){
+  const p=result.prepared||{}, groups=p.group_status||[];
+  const valid=Number(p.questions)===540 && Number(p.questions_without_answer)===0 && groups.length===6 &&
+    groups.every(g=>['ready','ready_with_review'].includes(g.status) && Number(g.questions)===90 && Number(g.matched_answers)===90);
+  $('#commitOfficialCycle').disabled=!(canCommit && valid);
+  $('#officialCycleReport').innerHTML=`
+    <div class="backtest-metrics">
+      <span>Status ${esc(result.status||'validado')}</span><span>Questões ${Number(p.questions)||0}/540</span>
+      <span>Com gabarito ${Number(p.questions_with_answer)||0}</span><span>Sem gabarito ${Number(p.questions_without_answer)||0}</span>
+      <span>Classificação pendente ${Number(p.questions_unclassified)||0}</span>
+    </div>
+    ${groups.map(g=>`<div class="manifest-row"><div><strong>${g.year} · dia ${g.day} · ${esc(g.color||'—')}</strong><span>${g.questions} questões · ${g.matched_answers} respostas vinculadas · ${g.unclassified_questions||0} classificações pendentes</span></div><span>${esc(g.status)}</span></div>`).join('')}
+    ${(result.parsed||[]).map(f=>`<div class="manifest-row"><div><strong>${esc(f.filename)}</strong><span>${f.year} · dia ${f.day} · ${esc(f.document_type)}</span></div><span>${f.questions_found||f.answers_found||0} itens · ${esc(f.quality_status||'gabarito extraído')}</span></div>`).join('')}
+    ${valid ? '<p class="note">Estrutura validada. Questões com disciplina incerta permanecem marcadas para revisão, mas a área oficial está preservada.</p>' : '<p class="note">Não é possível gravar: revise os cadernos, gabaritos ou a quantidade de questões.</p>'}
+  `;
+}
+async function runOfficialCycle(dryRun){
+  const verify=$('#verifyOfficialCycle'), commit=$('#commitOfficialCycle'), box=$('#officialCycleReport');
+  verify.disabled=true; commit.disabled=true; verify.textContent=dryRun?'Baixando e validando…':'Validando…';
+  try{
+    const result=await api('/enem-import/import-official-cycle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:dryRun})});
+    showOfficialCycleReport(result,dryRun);
+    if(!dryRun){commit.disabled=true;await loadQuestionStats();await loadTopics();if(typeof loadSimulations==='function')await loadSimulations();}
+  }catch(e){box.innerHTML=`<div class="empty">Falha na validação/importação: ${esc(e.message)}. Nenhuma importação deve ser considerada concluída.</div>`;commit.disabled=true;}
+  finally{verify.disabled=false;verify.textContent='🔎 Validar ciclo 2023–2025';}
+}
+$('#verifyOfficialCycle')?.addEventListener('click',()=>runOfficialCycle(true));
+$('#commitOfficialCycle')?.addEventListener('click',()=>{if(confirm('Gravar no banco as 540 questões oficiais validadas?'))runOfficialCycle(false);});
+
+async function runOfficialTaxonomy(dryRun){
+  const verify=$('#verifyOfficialTaxonomy'), commit=$('#commitOfficialTaxonomy'), box=$('#officialTaxonomyReport');
+  verify.disabled=true;commit.disabled=true;verify.textContent=dryRun?'Lendo matriz oficial…':'Gravando taxonomia…';
+  try{
+    const result=await api('/enem-import/taxonomy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:dryRun})});
+    const d=result.diagnostics||{}, counts=result.counts||{};
+    const valid=d.valid===true && Number(d.competencies)===30 && Number(d.skills)===120;
+    commit.disabled=!(dryRun&&valid);
+    box.innerHTML=`<div class="backtest-metrics"><span>Status ${esc(result.status||'validado')}</span><span>Áreas 4</span><span>Competências ${d.competencies||0}/30</span><span>Habilidades ${d.skills||0}/120</span></div>
+      <div class="manifest-row"><div><strong>Competências</strong><span>${counts.competencies_created||0} novas · ${counts.competencies_updated||0} atualizadas</span></div><span>${valid?'Validadas':'Revisar'}</span></div>
+      <div class="manifest-row"><div><strong>Habilidades</strong><span>${counts.skills_created||0} novas · ${counts.skills_updated||0} atualizadas</span></div><span>${valid?'Validadas':'Revisar'}</span></div>
+      <p class="note">${valid?'Matriz validada; nenhuma alteração foi gravada nesta etapa.':'A matriz não atingiu os totais oficiais esperados e não pode ser gravada.'}</p>`;
+    if(!dryRun&&valid){commit.disabled=true;}
+  }catch(e){box.innerHTML=`<div class="empty">Falha ao obter ou validar a matriz oficial: ${esc(e.message)}. A taxonomia não foi marcada como concluída.</div>`;commit.disabled=true;}
+  finally{verify.disabled=false;verify.textContent='🔎 Validar matriz oficial';}
+}
+$('#verifyOfficialTaxonomy')?.addEventListener('click',()=>runOfficialTaxonomy(true));
+$('#commitOfficialTaxonomy')?.addEventListener('click',()=>{if(confirm('Gravar as competências e habilidades extraídas da Matriz oficial do INEP?'))runOfficialTaxonomy(false);});
 
 /* Classificação auditável */
 async function loadClassification(){
