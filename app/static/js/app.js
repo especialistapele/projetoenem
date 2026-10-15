@@ -175,7 +175,8 @@ async function parseSelected(){
 async function loadManifest(){
   try{
     const d=await api('/enem-import/manifest');
-    await loadImportQuota();\n    $('#importManifest').innerHTML=(d.items||[]).map(x=>`<div class="manifest-row"><div><strong>${esc(x.original_filename||x.filename)}</strong><span>${x.year} · dia ${x.day||'—'} · ${esc(x.color||'—')} · ${esc(x.document_type)} · ${esc(x.status||'')}</span></div><code>${esc(x.sha256||'')}</code><span>${((Number(x.file_size_bytes)||0)/1024/1024).toFixed(2)} MB${x.special_version?' · especial':''}</span></div>`).join('')||'<div class="empty">Nenhum arquivo baixado.</div>';
+    await loadImportQuota();
+    $('#importManifest').innerHTML=(d.items||[]).map(x=>`<div class="manifest-row"><div><strong>${esc(x.original_filename||x.filename)}</strong><span>${x.year} · dia ${x.day||'—'} · ${esc(x.color||'—')} · ${esc(x.document_type)} · ${esc(x.status||'')}</span></div><code>${esc(x.sha256||'')}</code><span>${((Number(x.file_size_bytes)||0)/1024/1024).toFixed(2)} MB${x.special_version?' · especial':''}</span></div>`).join('')||'<div class="empty">Nenhum arquivo baixado.</div>';
   }catch(e){$('#importManifest').innerHTML=`<div class="empty">${esc(e.message)}</div>`}
 }
 $('#discoverImports').onclick=discoverImports;
@@ -298,9 +299,118 @@ const lineChart=(items,valueKey,labelKey)=>{
   return `<svg viewBox="0 0 ${w} ${h}" class="chart-svg" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="url(#g)" stroke-width="3"/><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>${items.map((x,i)=>{const cx=p+i*((w-2*p)/Math.max(items.length-1,1)),cy=h-p-(Number(x[valueKey]||0)/max)*(h-2*p);return `<circle cx="${cx}" cy="${cy}" r="4" fill="#22d3ee"/><text x="${cx}" y="${h-8}" text-anchor="middle">${esc(x[labelKey]||i+1)}</text><text x="${cx}" y="${Math.max(14,cy-9)}" text-anchor="middle">${Number(x[valueKey]||0).toFixed(0)}</text>`}).join('')}</svg>`;
 };
 async function loadDashboardHistory(){try{const d=await api('/learning/dashboard/history');$('#simulationChart').innerHTML=lineChart(d.simulations,'estimated_score','sequence');$('#essayChart').innerHTML=lineChart(d.essays,'score','title')}catch(e){if($('#simulationChart'))$('#simulationChart').innerHTML='<div class="empty">Entre para acompanhar sua evolução.</div>'}}
-async function loadSimulations(){try{const rows=await api('/learning/simulations');$('#simulationCards').innerHTML=rows.map(s=>`<article class="card"><small>Simulado ${s.sequence}</small><h3>${esc(s.title)}</h3><p>${s.question_count} questões · ${esc(s.status)}</p><button onclick="openSimulation(${s.id})">Abrir</button></article>`).join('')||'<div class="empty">Nenhum simulado cadastrado.</div>'}catch(e){$('#simulationCards').innerHTML='<div class="empty">'+esc(e.message)+'</div>'}}
-window.openSimulation=async id=>{try{const d=await api(`/learning/simulations/${id}/questions`);$('#simulationResult').style.display='block';$('#simulationResult').innerHTML=`<h3>Simulado</h3>${d.length?d.slice(0,1).map(q=>`<div class="question-card"><strong>Questão ${q.number}</strong><p>${esc(q.statement_text||'')}</p>${q.alternatives.map(a=>`<button onclick="answerSimulation(${id},${q.question_id},'${a.letter}')">${a.letter}) ${esc(a.text)}</button>`).join('')}</div>`).join(''):'<div class="empty">O simulado ainda não foi gerado pelo administrador.</div>'}`}catch(e){alert(e.message)}};
-window.answerSimulation=async(sid,qid,letter)=>{try{await api(`/learning/simulations/${sid}/answer`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question_id:qid,selected_letter:letter})});alert('Resposta registrada.');}catch(e){alert(e.message)}};
+async function loadSimulations(){
+  try {
+    const rows = await api('/learning/simulations');
+    const labels = {ready:'Pronto', not_generated:'Aguardando questões', incomplete:'Incompleto'};
+    $('#simulationCards').innerHTML = rows.map(s => {
+      const generated = Number(s.generated_question_count || 0);
+      const target = Number(s.question_count || 0);
+      const ready = s.status === 'ready' && generated === target;
+      return `<article class="card">
+        <small>Simulado ${s.sequence}</small>
+        <h3>${esc(s.title)}</h3>
+        <p>${generated}/${target} questões · ${esc(labels[s.status] || s.status || 'Indisponível')}</p>
+        <button ${ready ? `onclick="openSimulation(${s.id})"` : 'disabled'}>${ready ? 'Iniciar simulado' : 'Em preparação'}</button>
+      </article>`;
+    }).join('') || '<div class="empty">Nenhum simulado cadastrado.</div>';
+  } catch(e) {
+    $('#simulationCards').innerHTML = '<div class="empty">'+esc(e.message)+'</div>';
+  }
+}
+window._activeSimulation = null;
+window.renderActiveSimulation = () => {
+  const state = window._activeSimulation;
+  const root = $('#simulationResult');
+  if (!state || !root) return;
+  const q = state.questions[state.index];
+  if (!q) {
+    root.innerHTML = '<div class="empty">Este simulado não possui questões disponíveis.</div>';
+    return;
+  }
+  const selected = state.answers[q.question_id];
+  const answered = Object.keys(state.answers).length;
+  root.style.display = 'block';
+  root.innerHTML = `
+    <div class="simulation-heading">
+      <div><small>${esc(state.title || 'Simulado')}</small><h3>Questão ${q.number}</h3></div>
+      <span>Questão ${state.index + 1} de ${state.questions.length} · ${answered} respondidas</span>
+    </div>
+    <div class="question-card">
+      <p>${esc(q.statement_text || '')}</p>
+      <div class="simulation-options">${(q.alternatives || []).map(a => `
+        <button class="answer-option ${selected === a.letter ? 'selected' : ''}" aria-pressed="${selected === a.letter ? 'true' : 'false'}"
+          onclick="answerSimulation(${state.id},${q.question_id},'${a.letter}')">
+          <strong>${a.letter})</strong> ${esc(a.text)}
+        </button>`).join('')}</div>
+    </div>
+    <div class="simulation-nav">
+      <button class="secondary" onclick="navigateSimulation(-1)" ${state.index === 0 ? 'disabled' : ''}>Anterior</button>
+      <span>${state.index + 1}/${state.questions.length}</span>
+      <button class="secondary" onclick="navigateSimulation(1)" ${state.index >= state.questions.length - 1 ? 'disabled' : ''}>Próxima</button>
+      <button onclick="finishSimulation(${state.id})" ${answered !== state.questions.length ? 'disabled' : ''}>Finalizar</button>
+    </div>`;
+};
+window.navigateSimulation = delta => {
+  const state = window._activeSimulation;
+  if (!state) return;
+  state.index = Math.max(0, Math.min(state.questions.length - 1, state.index + delta));
+  window.renderActiveSimulation();
+};
+window.openSimulation = async id => {
+  try {
+    const rows = await api('/learning/simulations');
+    const simulation = rows.find(x => Number(x.id) === Number(id));
+    if (!simulation || simulation.status !== 'ready') {
+      $('#simulationResult').style.display = 'block';
+      $('#simulationResult').innerHTML = '<div class="empty">Este simulado ainda não está completo. Aguarde a preparação do banco de questões.</div>';
+      return;
+    }
+    const questions = await api(`/learning/simulations/${id}/questions`);
+    if (!questions.length || questions.length !== Number(simulation.question_count)) {
+      $('#simulationResult').style.display = 'block';
+      $('#simulationResult').innerHTML = '<div class="empty">A seleção de questões está incompleta. O simulado não pode ser iniciado.</div>';
+      return;
+    }
+    window._activeSimulation = {id:Number(id),title:simulation.title,questions,index:0,answers:{}};
+    window.renderActiveSimulation();
+  } catch(e) { alert(e.message); }
+};
+window.answerSimulation = async (sid,qid,letter) => {
+  try {
+    await api(`/learning/simulations/${sid}/answer`, {
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({question_id:qid,selected_letter:letter})
+    });
+    const state = window._activeSimulation;
+    if (state && Number(state.id) === Number(sid)) {
+      state.answers[qid] = letter;
+      if (state.index < state.questions.length - 1) state.index += 1;
+      window.renderActiveSimulation();
+    }
+  } catch(e) { alert(e.message); }
+};
+window.finishSimulation = async id => {
+  const state = window._activeSimulation;
+  if (!state || Number(state.id) !== Number(id)) return;
+  if (Object.keys(state.answers).length !== state.questions.length) {
+    alert('Responda todas as questões antes de finalizar.');
+    return;
+  }
+  try {
+    const result = await api(`/learning/simulations/${id}/result`);
+    $('#simulationResult').innerHTML = `
+      <div class="simulation-score">
+        <small>Resultado · ${esc(result.title || state.title)}</small>
+        <h3>${result.correct} de ${result.answered} acertos</h3>
+        <p>${Math.round((result.accuracy || 0) * 100)}% de aproveitamento</p>
+        ${result.estimated_score != null ? `<p>Estimativa pedagógica: ${result.estimated_score}</p>` : ''}
+        <p class="muted">${esc(result.score_note || 'Resultado baseado nas respostas registradas.')}</p>
+        <div class="simulation-nav"><button onclick="loadSimulations()">Voltar aos simulados</button></div>
+      </div>
+      ${(result.areas || []).map(a => `<div class="card"><strong>${esc(a.area)}</strong><p>${a.correct}/${a.total} corretas · ${Math.round((a.accuracy || 0) * 100)}%</p></div>`).join('')}`;
+  } catch(e) { alert(e.message); }
+};
 $('#seedSimulations')?.addEventListener('click',async()=>{try{await api('/learning/simulations/seed',{method:'POST'});await loadSimulations();}catch(e){alert('Somente o administrador pode criar o ciclo: '+e.message)}});
 async function loadEssays(){try{const rows=await api('/learning/essays');$('#essayHistory').innerHTML=rows.map(e=>`<div><strong>${esc(e.title)}</strong><span>${new Date(e.submitted_at).toLocaleDateString('pt-BR')} · ${esc(e.status)}${e.score!=null?' · nota '+e.score:''}</span></div>`).join('')||'<div class="empty">Você ainda não enviou uma redação.</div>'}catch(e){$('#essayHistory').innerHTML='<div class="empty">'+esc(e.message)+'</div>'}}
 $('#submitEssay')?.addEventListener('click',async()=>{try{await api('/learning/essays',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:$('#essayTitle').value,content_text:$('#essayText').value})});alert('Redação enviada. O prazo de correção é de até 7 dias.');$('#essayText').value='';await loadEssays();await loadDashboardHistory()}catch(e){alert(e.message)}});
