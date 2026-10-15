@@ -75,6 +75,8 @@ def record_attempt(payload: AttemptIn, db: Session = Depends(get_db), user=Depen
     if not q:
         raise HTTPException(404, 'Questão não encontrada.')
     letter = payload.selected_letter.upper()
+    if not any(a.letter.upper() == letter for a in q.alternatives):
+        raise HTTPException(422, 'Alternativa inválida para esta questão.')
     correct = any(a.letter.upper() == letter and a.is_correct for a in q.alternatives)
     attempt = QuestionAttempt(user_id=uid, question_id=q.id, selected_letter=letter, is_correct=correct, seconds_spent=payload.seconds_spent)
     db.add(attempt)
