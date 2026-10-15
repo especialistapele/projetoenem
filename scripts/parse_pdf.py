@@ -58,26 +58,26 @@ def parse_answer_key(full_text: str) -> dict[int,str]:
 
 def infer_metadata(filename: str, document_text: str = "") -> dict:
     low = filename.lower()
-    myear = re.search(r"(?:19|20)\\d{2}", low)
-    mcd = re.search(r"cd(\\d+)", low)
+    myear = re.search(r"(?:19|20)\d{2}", low)
+    mcd = re.search(r"cd(\d+)", low)
     year = int(myear.group(0)) if myear else None
     caderno = int(mcd.group(1)) if mcd else None
     cover = (document_text or "")[:6000].lower()
 
     # Em alguns arquivos do INEP, o nome usa D6 para o segundo dia.
-    if re.search(r"2\\s*[º°o]?\\s*dia|segundo dia", cover):
+    if re.search(r"2\s*[º°o]?\s*dia|segundo dia", cover):
         day = 2
-    elif re.search(r"1\\s*[º°o]?\\s*dia|primeiro dia", cover):
+    elif re.search(r"1\s*[º°o]?\s*dia|primeiro dia", cover):
         day = 1
     else:
-        mday = re.search(r"(?:dia|d)(\\d)", low)
+        mday = re.search(r"(?:dia|d)(\d)", low)
         raw_day = int(mday.group(1)) if mday else None
         day = 2 if raw_day == 6 else (raw_day if raw_day in (1, 2) else None)
 
     color_names = ("Azul", "Amarelo", "Branco", "Verde", "Cinza", "Rosa", "Laranja", "Roxo")
-    color = next((name for name in color_names if re.search(r"\\b" + re.escape(name.lower()) + r"\\b", low)), None)
+    color = next((name for name in color_names if re.search(r"\b" + re.escape(name.lower()) + r"\b", low)), None)
     if not color:
-        color = next((name for name in color_names if re.search(r"\\b" + re.escape(name.lower()) + r"\\b", cover)), None)
+    color = next((name for name in color_names if re.search(r"\b" + re.escape(name.lower()) + r"\b", low)), None)
 
     # Fallback oficial específico da aplicação regular de 2025.
     if not color and year == 2025:
