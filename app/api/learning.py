@@ -247,7 +247,12 @@ def start_proficiency_v2(payload: ProficiencyStartInV2, user=Depends(get_current
         return {"assessment_id":active.id,"status":"in_progress","question_count":len(items),"items":[{"position":i.position,"question_id":i.question_id} for i in items]}
     a=ProficiencyAssessment(user_id=uidv,title='Teste de proficiência inicial',status='in_progress',question_count=0)
     db.add(a);db.flush()
-    qids=[r[0] for r in db.query(Question.id).order_by(func.random()).limit(payload.question_count).all()]
+    qids=[r[0] for r in db.query(Question.id).join(Alternative, Alternative.question_id==Question.id).group_by(Question.id)
+          .having(func.count(Alternative.id)>=2, func.count(Alternative.id).filter(Alternative.is_correct.is_(True))==1)
+          .order_by(func.random()).limit(payload.question_count).all()]
+    if not qids:
+        db.rollback()
+        raise HTTPException(409,'Não há questões com alternativas e gabarito válidos para iniciar o diagnóstico.')
     for pos,qid in enumerate(qids,1): db.add(ProficiencyAssessmentItem(assessment_id=a.id,question_id=qid,position=pos))
     a.question_count=len(qids);db.commit()
     return {"assessment_id":a.id,"status":a.status,"question_count":a.question_count,"items":[{"position":i.position,"question_id":i.question_id} for i in db.query(ProficiencyAssessmentItem).filter_by(assessment_id=a.id).order_by(ProficiencyAssessmentItem.position).all()]}
