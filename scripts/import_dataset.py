@@ -72,9 +72,12 @@ def validate_dataset(payload):
             raise ValueError(f"Questão {index}: alternativas devem usar letras de A a E.")
         if any(not str(alternative.get("text") or "").strip() for alternative in alternatives):
             raise ValueError(f"Questão {index}: existe alternativa sem texto.")
+        is_annulled = item.get("is_annulled") is True
         correct_count = sum(1 for alternative in alternatives if alternative.get("is_correct") is True)
-        if correct_count != 1:
-            raise ValueError(f"Questão {index}: esperado exatamente um gabarito correto; encontrado {correct_count}.")
+        expected_correct_count = 0 if is_annulled else 1
+        if correct_count != expected_correct_count:
+            expected_label = "nenhuma alternativa correta para questão anulada" if is_annulled else "exatamente um gabarito correto"
+            raise ValueError(f"Questão {index}: esperado {expected_label}; encontrado {correct_count}.")
         if len(alternatives) != 5 or set(letters) != {"A", "B", "C", "D", "E"}:
             raise ValueError(f"Questão {index}: esperado o conjunto completo de cinco alternativas A–E; encontrado {len(alternatives)}.")
     # A prova regular do ENEM tem 90 questões por caderno/dia. Quando o lote
@@ -146,13 +149,15 @@ def run(path, dry_run=False):
                 question = Question(exam_id=exam.id, number=item["number"],
                                     subject_id=subject.id if subject else None,
                                     source_text=item.get("source_text"),
-                                    statement_text=item["statement_text"])
+                                    statement_text=item["statement_text"],
+                                    is_annulled=bool(item.get("is_annulled", False)))
                 db.add(question)
                 db.flush()
                 created["questions"] += 1
             else:
                 # Reimportações corrigem texto e classificação sem duplicar a questão.
                 question.statement_text = item["statement_text"]
+                question.is_annulled = bool(item.get("is_annulled", False))
                 if item.get("source_text") is not None:
                     question.source_text = item["source_text"]
                 if subject:
