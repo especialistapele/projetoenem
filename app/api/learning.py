@@ -14,6 +14,11 @@ router = APIRouter(prefix="/learning", tags=["learning"])
 def uid(user): return user.get("id")
 
 
+def simulation_exam_year(cycle_year: int, sequence: int) -> int:
+    """Sequences 1–3 use the three most recent complete official exams before the cycle year."""
+    return cycle_year - sequence
+
+
 def simulation_readiness_status(target_count: int, generated_count: int) -> str:
     if target_count > 0 and generated_count == target_count:
         return "ready"
@@ -117,13 +122,31 @@ def generate_simulation(simulation_id:int,user=Depends(require_admin),db:Session
             f"Seleção parcial encontrada: {existing_count}/{s.question_count} questões. "
             "O simulado não será marcado como pronto; revise a seleção existente."
         )
-    # Balanced ENEM-like selection by four knowledge areas when enough classified questions exist.
+    # Each simulation uses a distinct official exam year: sequence 1=previous year,
+    # sequence 2=two years back, sequence 3=three years back.
+    exam_year = simulation_exam_year(s.cycle_year, s.sequence)
     areas=db.query(KnowledgeArea).filter(KnowledgeArea.code.in_(["LC","CH","CN","MT"])).order_by(KnowledgeArea.id).all()
-    if len(areas) < 4:
-        areas=db.query(KnowledgeArea).order_by(KnowledgeArea.id).limit(4).all()
+    if len(areas) != 4:
+        raise HTTPException(409,"Taxonomia de áreas incompleta; importe as quatro áreas oficiais antes de gerar simulados.")
     selected=[]
     for area in areas:
-        ids=[r[0] for r in db.query(Question.id).join(Subject, Question.subject_id==Subject.id).join(Alternative, Alternative.question_id==Question.id).filter(Subject.knowledge_area_id==area.id).group_by(Question.id).having(func.count(Alternative.id)>=2, func.count(Alternative.id).filter(Alternative.is_correct.is_(True))==1).order_by(Question.id).limit(45).all()]
+        day = 1 if area.code in ("LC", "CH") else 2
+        color = "azul" if day == 1 or exam_year >= 2025 else "amarelo"
+        ids=[r[0] for r in db.query(Question.id)
+             .join(Exam, Question.exam_id==Exam.id)
+             .join(Subject, Question.subject_id==Subject.id)
+             .join(Alternative, Alternative.question_id==Question.id)
+             .filter(
+                 Exam.year==exam_year,
+                 Exam.edition=="regular",
+                 Exam.day==day,
+                 Exam.color.ilike(color),
+                 Subject.knowledge_area_id==area.id,
+             )
+             .group_by(Question.id)
+             .having(func.count(Alternative.id)==5, func.count(Alternative.id).filter(Alternative.is_correct.is_(True))==1)
+             .order_by(Question.number)
+             .limit(45).all()]
         selected.extend(ids)
     selected=list(dict.fromkeys(selected))[:min(180, s.question_count)]
     if len(selected)<s.question_count:
