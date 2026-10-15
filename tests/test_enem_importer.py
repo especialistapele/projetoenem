@@ -8,7 +8,7 @@ from unittest.mock import patch
 from app.services.enem_importer import download_pdf, validate_pdf_bytes, _urlopen_verified
 from scripts.import_dataset import normalize_area, validate_dataset
 from scripts.parse_pdf import infer_metadata, parse_pdf, parse_answer_key
-from app.services.enem_importer import candidate_2025
+from app.services.enem_importer import candidate_2025, candidate_official_cycle
 from app.services.classifier import official_area_for_question_number
 from app.api.learning import simulation_readiness_status, simulation_exam_year
 
@@ -99,6 +99,23 @@ class EnemImporterTests(unittest.TestCase):
         self.assertEqual(official_area_for_question_number(136), "Matemática")
         self.assertEqual(official_area_for_question_number(180), "Matemática")
         self.assertIsNone(official_area_for_question_number(181))
+
+    def test_official_cycle_has_six_complete_caderno_gabarito_pairs(self):
+        items = candidate_official_cycle()
+        self.assertEqual(len(items), 12)
+        for year in (2023, 2024, 2025):
+            year_items = [item for item in items if item["year"] == year]
+            self.assertEqual(len(year_items), 4)
+            self.assertEqual({item["document_type"] for item in year_items}, {"caderno", "gabarito"})
+            self.assertTrue(all(item["source_url"].startswith("https://download.inep.gov.br/") for item in year_items))
+        self.assertEqual(
+            {(item["day"], item["caderno"], item["color"]) for item in items if item["year"] == 2024},
+            {(1, 1, "Azul"), (2, 5, "Amarelo")},
+        )
+        self.assertEqual(
+            {(item["day"], item["caderno"], item["color"]) for item in items if item["year"] == 2025},
+            {(1, 1, "Azul"), (2, 7, "Azul")},
+        )
 
     def test_2025_candidate_urls_use_official_day_and_booklet_codes(self):
         items = candidate_2025()
