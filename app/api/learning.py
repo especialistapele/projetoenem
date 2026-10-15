@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import text, func
+from sqlalchemy import text, func, case
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models import Exam, Question, Alternative, QuestionAttempt, StudentTopicPerformance, Topic, QuestionTopic, KnowledgeArea, Program, TopicYearFrequency, Simulation, SimulationQuestion, SimulationAttempt, EssaySubmission, EssayReview, Subject
@@ -63,7 +63,7 @@ def answer_question(payload:AttemptIn, user=Depends(get_current_supabase_user), 
     if not q: raise HTTPException(404,"Questão não encontrada")
     letter=payload.selected_letter.upper()
     if not any(a.letter.upper()==letter for a in q.alternatives): raise HTTPException(422,"Alternativa inválida para esta questão")
-    correct=next((a.is_correct for a in q.alternatives if a.letter.upper()==letter),False)
+    correct=False if q.is_annulled else next((a.is_correct for a in q.alternatives if a.letter.upper()==letter),False)
     attempt=QuestionAttempt(user_id=uid(user),question_id=q.id,selected_letter=letter,is_correct=bool(correct),seconds_spent=payload.seconds_spent)
     db.add(attempt)
     topics=db.query(QuestionTopic).filter(QuestionTopic.question_id==q.id).all()
@@ -74,7 +74,7 @@ def answer_question(payload:AttemptIn, user=Depends(get_current_supabase_user), 
             db.add(perf)
         perf.attempt_count += 1; perf.correct_count += int(bool(correct)); perf.accuracy=perf.correct_count/perf.attempt_count; perf.last_attempt_at=datetime.now(timezone.utc)
     db.commit()
-    return {"question_id":q.id,"selected_letter":letter,"is_correct":bool(correct),"correct_letter":next((a.letter for a in q.alternatives if a.is_correct),None)}
+    return {"question_id":q.id,"selected_letter":letter,"is_correct":None if q.is_annulled else bool(correct),"is_annulled":bool(q.is_annulled),"correct_letter":None if q.is_annulled else next((a.letter for a in q.alternatives if a.is_correct),None)}
 
 @router.get("/simulations")
 def simulations(db:Session=Depends(get_db)):
@@ -144,7 +144,7 @@ def generate_simulation(simulation_id:int,user=Depends(require_admin),db:Session
                  Subject.knowledge_area_id==area.id,
              )
              .group_by(Question.id)
-             .having(func.count(Alternative.id)==5, func.count(Alternative.id).filter(Alternative.is_correct.is_(True))==1)
+             .having(func.count(Alternative.id)==5, func.count(Alternative.id).filter(Alternative.is_correct.is_(True))==case((Question.is_annulled.is_(True), 0), else_=1))
              .order_by(Question.number)
              .limit(45).all()]
         selected.extend(ids)
