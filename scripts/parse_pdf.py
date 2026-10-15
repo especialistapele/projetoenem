@@ -50,6 +50,11 @@ def parse_answer_key(full_text: str) -> dict[int,str]:
     for m in ANSWER_ROW_PATTERN.finditer(full_text):
         n=int(m.group(1)); letter=m.group(2).upper()
         if 1 <= n <= 200: answers[n]=letter
+    # Preserve official annulments instead of fabricating a correct alternative.
+    for m in ANNULLED_ANSWER_PATTERN.finditer(full_text):
+        n = int(m.group(1))
+        if 1 <= n <= 200:
+            answers[n] = "ANULADO"
     # Fallback for compact rows such as "1 D 2 A 3 C".
     for m in re.finditer(r"\b(\d{1,3})\s*[-:]?\s*([A-E])\b", full_text):
         n=int(m.group(1));
