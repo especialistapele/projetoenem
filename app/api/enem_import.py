@@ -170,10 +170,13 @@ def prepare_dataset():
         items = notebook.get("questions", []) or []
         group = {"year": year, "day": day, "color": color_code,
                  "questions": len(items), "answers": len(answers),
-                 "matched_answers": 0, "status": "ready" if answers else "review"}
+                 "matched_answers": 0, "unclassified_questions": 0,
+                 "status": "ready" if answers else "review"}
         for q in items:
             text = q.get("statement_text", "")
             cls = classify_question(text)
+            if not cls.get("area") or not cls.get("subject"):
+                group["unclassified_questions"] += 1
             number = int(q.get("number"))
             answer = answers.get(str(number), answers.get(number))
             alts = []
@@ -193,7 +196,7 @@ def prepare_dataset():
                 "topics": [],
                 "classification": cls,
             })
-        if group["matched_answers"] != len(items) or any(
+        if group["matched_answers"] != len(items) or group["unclassified_questions"] > 0 or any(
             len(q.get("alternatives", []) or []) != 5 for q in items
         ):
             group["status"] = "review"
@@ -205,7 +208,8 @@ def prepare_dataset():
                "groups": groups,
                "diagnostics": {"groups": len(groups), "questions": len(questions),
                                "questions_with_answer": sum(1 for q in questions if any(a.get("is_correct") for a in q["alternatives"])),
-                               "questions_without_answer": sum(1 for q in questions if not any(a.get("is_correct") for a in q["alternatives"]))}}
+                               "questions_without_answer": sum(1 for q in questions if not any(a.get("is_correct") for a in q["alternatives"])),
+                               "questions_unclassified": sum(1 for q in questions if not q.get("area") or not q.get("subject"))}}
     out = BASE_DIR / "prepared_dataset.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"status": "prepared", "path": str(out.relative_to(BASE_DIR.parent.parent)), **payload["diagnostics"], "groups": groups}
