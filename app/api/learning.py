@@ -23,7 +23,7 @@ def require_teacher(authorization: Optional[str] = Header(default=None)):
 class AttemptIn(BaseModel):
     question_id:int
     selected_letter:str=Field(min_length=1,max_length=1)
-    seconds_spent:Optional[int]=None
+    seconds_spent:Optional[int]=Field(default=None,ge=0,le=7200)
 
 class EssayIn(BaseModel):
     title:str=Field(min_length=1,max_length=200)
@@ -49,6 +49,7 @@ def answer_question(payload:AttemptIn, user=Depends(get_current_supabase_user), 
     q=db.query(Question).options(joinedload(Question.alternatives)).filter(Question.id==payload.question_id).first()
     if not q: raise HTTPException(404,"Questão não encontrada")
     letter=payload.selected_letter.upper()
+    if not any(a.letter.upper()==letter for a in q.alternatives): raise HTTPException(422,"Alternativa inválida para esta questão")
     correct=next((a.is_correct for a in q.alternatives if a.letter.upper()==letter),False)
     attempt=QuestionAttempt(user_id=uid(user),question_id=q.id,selected_letter=letter,is_correct=bool(correct),seconds_spent=payload.seconds_spent)
     db.add(attempt)
@@ -161,7 +162,7 @@ def simulation_questions(simulation_id:int, user=Depends(get_current_supabase_us
 class SimulationAnswerIn(BaseModel):
     question_id:int
     selected_letter:str=Field(min_length=1,max_length=1)
-    seconds_spent:Optional[int]=None
+    seconds_spent:Optional[int]=Field(default=None,ge=0,le=7200)
 
 @router.post("/simulations/{simulation_id}/answer")
 def simulation_answer(simulation_id:int,payload:SimulationAnswerIn,user=Depends(get_current_supabase_user),db:Session=Depends(get_db)):
@@ -270,7 +271,9 @@ def proficiency_answer_v2(assessment_id:int,payload:ProficiencyAnswerInV2,user=D
     item=db.query(ProficiencyAssessmentItem).filter_by(assessment_id=assessment_id,question_id=payload.question_id).first()
     if not item: raise HTTPException(404,'Questão não pertence ao teste.')
     q=db.query(Question).options(joinedload(Question.alternatives)).filter_by(id=payload.question_id).first()
-    letter=payload.selected_letter.upper(); correct=any(x.letter.upper()==letter and x.is_correct for x in q.alternatives)
+    letter=payload.selected_letter.upper()
+    if not any(x.letter.upper()==letter for x in q.alternatives): raise HTTPException(422,'Alternativa inválida para esta questão.')
+    correct=any(x.letter.upper()==letter and x.is_correct for x in q.alternatives)
     item.selected_letter=letter;item.is_correct=bool(correct);item.answered_at=datetime.now(timezone.utc);db.commit()
     answered=db.query(ProficiencyAssessmentItem).filter_by(assessment_id=assessment_id).filter(ProficiencyAssessmentItem.selected_letter.isnot(None)).count()
     return {"is_correct":bool(correct),"answered":answered,"total":a.question_count}
