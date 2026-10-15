@@ -8,7 +8,7 @@ from sqlalchemy import text
 from pydantic import BaseModel, Field
 from app.services.enem_importer import discover, download_pdf, write_manifest, classify_document, file_identity, validate_pdf_bytes
 from scripts.parse_pdf import parse_pdf
-from app.services.classifier import classify_question
+from app.services.classifier import classify_question, official_area_for_question_number
 from scripts.import_dataset import run as import_dataset_run
 
 router = APIRouter(prefix="/enem-import", tags=["enem-import"], dependencies=[Depends(require_admin)])
@@ -174,10 +174,19 @@ def prepare_dataset():
                  "status": "ready" if answers else "review"}
         for q in items:
             text = q.get("statement_text", "")
+            number = int(q.get("number"))
             cls = classify_question(text)
+            official_area = official_area_for_question_number(number)
+            if official_area:
+                # A faixa numérica é fonte mais confiável para a área do que palavras-chave.
+                # Se o classificador sugerir outra área, mantém a área oficial e exige revisão da disciplina.
+                if cls.get("area") != official_area:
+                    cls["subject"] = None
+                    cls["confidence"] = 0.0
+                    cls["method"] = "official_question_number"
+                cls["area"] = official_area
             if not cls.get("area") or not cls.get("subject"):
                 group["unclassified_questions"] += 1
-            number = int(q.get("number"))
             answer = answers.get(str(number), answers.get(number))
             alts = []
             for alt in q.get("alternatives", []) or []:
