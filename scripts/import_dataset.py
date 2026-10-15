@@ -145,7 +145,9 @@ def run(path, dry_run=False):
             db.rollback()
         else:
             db.commit()
-        print(json.dumps({"dry_run": dry_run, "created": created}, ensure_ascii=False, indent=2))
+        summary = {"dry_run": dry_run, "created": created}
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return summary
     finally:
         db.close()
 
