@@ -99,7 +99,7 @@ def generate_predictions(
         explanations=[("frequency",factors["frequency"],"Frequência histórica do tema."),("recency",factors["recency"],"Peso das ocorrências mais recentes."),("trend",factors["trend"],"Variação entre períodos históricos."),("graph",factors["graph_boost"],"Bônus pelas conexões do tema no grafo."),("area_weight",factors["area_weight"],"Peso da área para o curso selecionado.")]
         db.add_all([TopicPredictionExplanation(prediction_id=r.id,factor=f,contribution=c,explanation=e) for f,c,e in explanations])
     db.commit()
-    return get_predictions(program_id,db)
+    return get_predictions(program_id, db=db)
 
 @router.get("/predictions")
 def get_predictions(program_id:int, limit:int=Query(50,ge=1,le=500), db:Session=Depends(get_db)):
