@@ -45,6 +45,30 @@ def candidate_2025():
                 })
     return items
 
+def candidate_official_cycle():
+    """Cadernos regulares para três provas completas distintas: 2023, 2024 e 2025."""
+    items = []
+    for year in (2023, 2024):
+        for day, day_code, booklet, color in (
+            (1, "D1", 1, "Azul"),
+            (2, "D2", 5, "Amarelo"),
+        ):
+            for kind, prefix in (("caderno", "PV"), ("gabarito", "GB")):
+                url = f"{INEP_DOWNLOAD}/{year}_{prefix}_impresso_{day_code}_CD{booklet}.pdf"
+                items.append({
+                    "year": year, "application": "regular", "day": day,
+                    "color": color, "caderno": booklet, "document_type": kind,
+                    "filename": Path(url).name, "source_url": url,
+                    "official": True, "status": "candidate",
+                })
+    items.extend(
+        item for item in candidate_2025()
+        if (item["day"] == 1 and item["caderno"] == 1)
+        or (item["day"] == 2 and item["caderno"] == 7)
+    )
+    return items
+
+
 def check_url(url, timeout=8):
     try:
         req=Request(url, method="HEAD", headers={"User-Agent":"ENEM-Predict/1.0"})
