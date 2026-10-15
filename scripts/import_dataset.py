@@ -94,9 +94,13 @@ def validate_dataset(payload):
         numbers = [item.get("number") for item in items]
         if len(numbers) != len(set(numbers)):
             raise ValueError(f"Prova {key}: existem números de questão duplicados.")
-        if len(items) != 90 or set(numbers) != set(range(1, 91)):
+        day = key[3]
+        expected_start = 1 if day == 1 else (91 if day == 2 else None)
+        expected_numbers = set(range(expected_start, expected_start + 90)) if expected_start is not None else None
+        if len(items) != 90 or expected_numbers is None or set(numbers) != expected_numbers:
+            expected_range = "1–90" if day == 1 else ("91–180" if day == 2 else "numeração oficial do dia")
             raise ValueError(
-                f"Prova {key}: caderno incompleto; esperado questões 1–90 (90 itens), "
+                f"Prova {key}: caderno incompleto; esperado questões {expected_range} (90 itens), "
                 f"encontrados {len(items)}."
             )
     return len(questions)
