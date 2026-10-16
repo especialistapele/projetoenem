@@ -27,6 +27,16 @@ def _urlopen_verified(request, timeout=30):
     context = ssl.create_default_context()
     ca_bundle = os.environ.get("ENEM_CA_BUNDLE") or certifi.where()
     context.load_verify_locations(cafile=ca_bundle)
+
+    # download.inep.gov.br serves a chain issued by RNP ICPEdu GR46. The host
+    # omits its intermediate in TLS handshakes on some clients, so include the
+    # published intermediate alongside normal roots. Hostname and certificate
+    # verification remain enabled; this is not an unverified TLS fallback.
+    target_url = request.full_url if hasattr(request, "full_url") else str(request)
+    if urlparse(target_url).hostname == "download.inep.gov.br":
+        intermediate = Path(__file__).resolve().parents[2] / "certs" / "rnp_icpedu_gr46_ov_tls_ca_2025.pem"
+        if intermediate.is_file():
+            context.load_verify_locations(cafile=str(intermediate))
     return urlopen(request, timeout=timeout, context=context)
 
 def candidate_2025():
