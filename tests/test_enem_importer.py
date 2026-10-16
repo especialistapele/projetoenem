@@ -135,7 +135,12 @@ class EnemImporterTests(unittest.TestCase):
             year_items = [item for item in items if item["year"] == year]
             self.assertEqual(len(year_items), 4)
             self.assertEqual({item["document_type"] for item in year_items}, {"caderno", "gabarito"})
-            self.assertTrue(all(item["source_url"].startswith("https://download.inep.gov.br/") for item in year_items))
+            allowed_hosts = (
+                ("https://riep.inep.gov.br/", "https://download.inep.gov.br/")
+                if year == 2023
+                else ("https://download.inep.gov.br/",)
+            )
+            self.assertTrue(all(item["source_url"].startswith(allowed_hosts) for item in year_items))
         self.assertEqual(
             {(item["day"], item["caderno"], item["color"]) for item in items if item["year"] == 2024},
             {(1, 1, "Azul"), (2, 5, "Amarelo")},
