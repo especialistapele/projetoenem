@@ -90,7 +90,7 @@ def candidate_official_cycle():
                 items.append({
                     "year": year, "application": "regular", "day": day,
                     "color": color, "caderno": booklet, "document_type": kind,
-                    "filename": Path(urlparse(url).path).name or f"enem_{year}_{day}_{kind}.pdf",
+                    "filename": f"{year}_{'PV' if kind == 'caderno' else 'GB'}_impresso_{day_code}_CD{booklet}.pdf",
                     "source_url": url,
                     "official": True, "status": "candidate",
                 })
