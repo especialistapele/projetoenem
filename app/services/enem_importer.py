@@ -68,10 +68,30 @@ def candidate_official_cycle():
         ):
             for kind, prefix in (("caderno", "PV"), ("gabarito", "GB")):
                 url = f"{INEP_DOWNLOAD}/{year}_{prefix}_impresso_{day_code}_CD{booklet}.pdf"
+                # The 2023 regular yellow booklet 2 is the stable RIEP source
+                # for day 1. The old direct CD1 link parsed as an incomplete
+                # 65-question document in the official-source smoke test.
+                if year == 2023 and day == 1:
+                    url = (
+                        "https://riep.inep.gov.br/bitstreams/"
+                        "6f6e6a08-9f0b-4365-9f52-a24c5e4ab2e7/download"
+                        if kind == "caderno"
+                        else "https://riep.inep.gov.br/bitstreams/"
+                        "4856d28d-13ae-4e11-9bcb-39216d0c59e0/download"
+                    )
+                    booklet, color = 2, "Amarelo"
+                elif year == 2023 and day == 2:
+                    url = (
+                        "https://riep.inep.gov.br/bitstreams/"
+                        "3f2f049c-3994-4c95-966c-1ab61663b668/download"
+                        if kind == "caderno"
+                        else f"{INEP_DOWNLOAD}/2023_GB_impresso_D2_CD5.pdf"
+                    )
                 items.append({
                     "year": year, "application": "regular", "day": day,
                     "color": color, "caderno": booklet, "document_type": kind,
-                    "filename": Path(url).name, "source_url": url,
+                    "filename": Path(urlparse(url).path).name or f"enem_{year}_{day}_{kind}.pdf",
+                    "source_url": url,
                     "official": True, "status": "candidate",
                 })
     items.extend(
