@@ -22,8 +22,21 @@ COLORS = {1:"Azul",2:"Amarelo",3:"Branco",4:"Rosa",5:"Cinza"}
 
 def _urlopen_verified(request, timeout=30):
     """Open HTTPS with certificate verification against the maintained certifi CA bundle."""
+    # Keep platform roots and add certifi/custom roots. Replacing the system store
+    # with a single custom bundle can accidentally remove public roots needed by INEP.
+    context = ssl.create_default_context()
     ca_bundle = os.environ.get("ENEM_CA_BUNDLE") or certifi.where()
-    context = ssl.create_default_context(cafile=ca_bundle)
+    context.load_verify_locations(cafile=ca_bundle)
+
+    # download.inep.gov.br serves a chain issued by RNP ICPEdu GR46. The host
+    # omits its intermediate in TLS handshakes on some clients, so include the
+    # published intermediate alongside normal roots. Hostname and certificate
+    # verification remain enabled; this is not an unverified TLS fallback.
+    target_url = request.full_url if hasattr(request, "full_url") else str(request)
+    if urlparse(target_url).hostname == "download.inep.gov.br":
+        intermediate = Path(__file__).resolve().parents[2] / "certs" / "rnp_icpedu_gr46_ov_tls_ca_2025.pem"
+        if intermediate.is_file():
+            context.load_verify_locations(cafile=str(intermediate))
     return urlopen(request, timeout=timeout, context=context)
 
 def candidate_2025():
@@ -55,10 +68,30 @@ def candidate_official_cycle():
         ):
             for kind, prefix in (("caderno", "PV"), ("gabarito", "GB")):
                 url = f"{INEP_DOWNLOAD}/{year}_{prefix}_impresso_{day_code}_CD{booklet}.pdf"
+                # The 2023 regular yellow booklet 2 is the stable RIEP source
+                # for day 1. The old direct CD1 link parsed as an incomplete
+                # 65-question document in the official-source smoke test.
+                if year == 2023 and day == 1:
+                    url = (
+                        "https://riep.inep.gov.br/bitstreams/"
+                        "6f6e6a08-9f0b-4365-9f52-a24c5e4ab2e7/download"
+                        if kind == "caderno"
+                        else "https://riep.inep.gov.br/bitstreams/"
+                        "4856d28d-13ae-4e11-9bcb-39216d0c59e0/download"
+                    )
+                    booklet, color = 2, "Amarelo"
+                elif year == 2023 and day == 2:
+                    url = (
+                        "https://riep.inep.gov.br/bitstreams/"
+                        "3f2f049c-3994-4c95-966c-1ab61663b668/download"
+                        if kind == "caderno"
+                        else f"{INEP_DOWNLOAD}/2023_GB_impresso_D2_CD5.pdf"
+                    )
                 items.append({
                     "year": year, "application": "regular", "day": day,
                     "color": color, "caderno": booklet, "document_type": kind,
-                    "filename": Path(url).name, "source_url": url,
+                    "filename": f"{year}_{'PV' if kind == 'caderno' else 'GB'}_impresso_{day_code}_CD{booklet}.pdf",
+                    "source_url": url,
                     "official": True, "status": "candidate",
                 })
     items.extend(
@@ -78,7 +111,7 @@ def check_url(url, timeout=8):
         # Some servers reject HEAD; a tiny ranged GET is the fallback.
         try:
             req=Request(url, headers={"User-Agent":"ENEM-Predict/1.0","Range":"bytes=0-1023"})
-            with urlopen(req, timeout=timeout) as r:
+            with _urlopen_verified(req, timeout=timeout) as r:
                 return 200 <= r.status < 400
         except Exception:
             return False
