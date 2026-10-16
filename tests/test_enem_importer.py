@@ -45,6 +45,24 @@ class EnemImporterTests(unittest.TestCase):
         self.assertTrue(context.check_hostname)
         self.assertEqual(mocked.call_args.kwargs["timeout"], 7)
 
+    def test_inep_host_loads_published_intermediate_without_disabling_tls(self):
+        class TrackingContext:
+            verify_mode = ssl.CERT_REQUIRED
+            check_hostname = True
+
+            def __init__(self):
+                self.bundles = []
+
+            def load_verify_locations(self, cafile):
+                self.bundles.append(str(cafile))
+
+        context = TrackingContext()
+        with patch("app.services.enem_importer.ssl.create_default_context", return_value=context), patch("app.services.enem_importer.urlopen"):
+            _urlopen_verified("https://download.inep.gov.br/test.pdf")
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(any(path.endswith("rnp_icpedu_gr46_ov_tls_ca_2025.pem") for path in context.bundles))
+
     def test_check_url_fallback_keeps_custom_verified_tls_context(self):
         class HeadRejectedResponse(FakeResponse):
             status = 200
