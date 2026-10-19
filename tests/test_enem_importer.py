@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.error import URLError
 from unittest.mock import patch
 
-from app.services.enem_importer import download_pdf, validate_pdf_bytes, _urlopen_verified
+from app.services.enem_importer import download_pdf, validate_pdf_bytes, _urlopen_verified, check_url
 from scripts.import_dataset import normalize_area, validate_dataset
 from scripts.parse_pdf import infer_metadata, parse_pdf, parse_answer_key
 from app.services.enem_importer import candidate_2025, candidate_official_cycle
@@ -44,6 +44,34 @@ class EnemImporterTests(unittest.TestCase):
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assertTrue(context.check_hostname)
         self.assertEqual(mocked.call_args.kwargs["timeout"], 7)
+
+    def test_inep_host_loads_published_intermediate_without_disabling_tls(self):
+        class TrackingContext:
+            verify_mode = ssl.CERT_REQUIRED
+            check_hostname = True
+
+            def __init__(self):
+                self.bundles = []
+
+            def load_verify_locations(self, cafile):
+                self.bundles.append(str(cafile))
+
+        context = TrackingContext()
+        with patch("app.services.enem_importer.ssl.create_default_context", return_value=context), patch("app.services.enem_importer.urlopen"):
+            _urlopen_verified("https://download.inep.gov.br/test.pdf")
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(any(path.endswith("rnp_icpedu_gr46_ov_tls_ca_2025.pem") for path in context.bundles))
+
+    def test_check_url_fallback_keeps_custom_verified_tls_context(self):
+        class HeadRejectedResponse(FakeResponse):
+            status = 200
+
+        response = HeadRejectedResponse(b"ok", "https://download.inep.gov.br/test.pdf")
+        with patch("app.services.enem_importer._urlopen_verified", side_effect=[URLError("HEAD not supported"), response]) as verified, patch("app.services.enem_importer.urlopen") as unverified:
+            self.assertTrue(check_url("https://download.inep.gov.br/test.pdf"))
+        self.assertEqual(verified.call_count, 2)
+        unverified.assert_not_called()
 
     def test_rejects_non_pdf_payload(self):
         valid, reason = validate_pdf_bytes(b"not a pdf" * 2000)
@@ -107,7 +135,12 @@ class EnemImporterTests(unittest.TestCase):
             year_items = [item for item in items if item["year"] == year]
             self.assertEqual(len(year_items), 4)
             self.assertEqual({item["document_type"] for item in year_items}, {"caderno", "gabarito"})
-            self.assertTrue(all(item["source_url"].startswith("https://download.inep.gov.br/") for item in year_items))
+            allowed_hosts = (
+                ("https://riep.inep.gov.br/", "https://download.inep.gov.br/")
+                if year == 2023
+                else ("https://download.inep.gov.br/",)
+            )
+            self.assertTrue(all(item["source_url"].startswith(allowed_hosts) for item in year_items))
         self.assertEqual(
             {(item["day"], item["caderno"], item["color"]) for item in items if item["year"] == 2024},
             {(1, 1, "Azul"), (2, 5, "Amarelo")},
